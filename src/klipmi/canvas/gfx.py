@@ -11,12 +11,23 @@ import re
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
+from .metrics import ADV_REGULAR, ADV_SEMIBOLD, UPM_REGULAR, UPM_SEMIBOLD
+
 W, H = 800, 480
 
-# Fonts compiled into QIDI's Plus 4 HMI. Approximate advance width per character.
-FONT_L, FONT_M, FONT_S = 0, 1, 2
-CHAR_W = {FONT_L: 12.5, FONT_M: 10.2, FONT_S: 8.0}
-LINE_H = {FONT_L: 30, FONT_M: 24, FONT_S: 20}
+# Fonts and pictures of hmi/plus4-canvas/plus4-canvas.tft (ids as listed in hmi/plus4-canvas/README.md).
+FONT_S, FONT_M, FONT_L, FONT_XL, FONT_D48, FONT_D96 = 0, 1, 2, 3, 4, 5  # Inter 16/20/24/32, SemiBold digits 48/96
+FONT_PX = {FONT_S: 16, FONT_M: 20, FONT_L: 24, FONT_XL: 32, FONT_D48: 48, FONT_D96: 96}
+LINE_H = {FONT_S: 20, FONT_M: 24, FONT_L: 30, FONT_XL: 40, FONT_D48: 58, FONT_D96: 116}
+DIGITS = {FONT_D48, FONT_D96}  # only "0123456789.-:%C /+"
+
+_BOLD = {FONT_D48, FONT_D96}
+
+
+def text_width(s: str, font: int) -> int:
+    """Pixel width of `s` in a font (advance widths from the Inter files)."""
+    adv, upm = (ADV_SEMIBOLD, UPM_SEMIBOLD) if font in _BOLD else (ADV_REGULAR, UPM_REGULAR)
+    return int(sum(adv[ord(ch) - 32] for ch in s if 32 <= ord(ch) < 127) * FONT_PX[font] / upm + 0.99)
 
 LEFT, CENTER, RIGHT = 0, 1, 2
 
@@ -100,8 +111,11 @@ def clean(s: str) -> str:
 def fit(s: str, width: int, font: int) -> str:
     """Shorten to the box width, with '..' when cut."""
     s = clean(s)
-    n = int(width / CHAR_W[font])
-    return s if len(s) <= n else s[: max(0, n - 2)] + ".."
+    if text_width(s, font) <= width:
+        return s
+    while s and text_width(s + "..", font) > width:
+        s = s[:-1]
+    return s + ".." if s else ""
 
 
 def fill(r: Rect, color: int) -> str:
@@ -121,72 +135,65 @@ def line(x1: int, y1: int, x2: int, y2: int, color: int) -> str:
     return "line %d,%d,%d,%d,%d" % (x1, y1, x2, y2, color)
 
 
-def rounded(r: Rect, color: int, radius: int = 10) -> List[str]:
-    """A filled rounded rectangle: two fills and four corner discs."""
-    radius = max(0, min(radius, (r.w - 1) // 2, (r.h - 1) // 2))
-    if radius < 2:
-        return [fill(r, color)]
-    x2, y2 = r.x + r.w - radius - 1, r.y + r.h - radius - 1
-    return [  # three fills that do not overlap (the display pays per pixel) and four corners
-        fill(Rect(r.x + radius, r.y, r.w - 2 * radius, r.h), color),
-        fill(Rect(r.x, r.y + radius, radius, r.h - 2 * radius), color),
-        fill(Rect(r.x + r.w - radius, r.y + radius, radius, r.h - 2 * radius), color),
-        disc(r.x + radius, r.y + radius, radius, color),
-        disc(x2, r.y + radius, radius, color),
-        disc(r.x + radius, y2, radius, color),
-        disc(x2, y2, radius, color),
-    ]
-
-
-# Seven-segment characters drawn with rectangles: the HMI's fonts top out at ~24 px.
-SEGMENTS = {
-    "0": "abcdef", "1": "bc", "2": "abdeg", "3": "abcdg", "4": "bcfg", "5": "acdfg",
-    "6": "acdefg", "7": "abc", "8": "abcdefg", "9": "abcdfg", "-": "g", " ": "",
+# Picture ids (see hmi/plus4-canvas/README.md). Pictures have no alpha: each icon strip and corner sheet is
+# baked for one backdrop colour, so drawing falls back to filled discs when the colours do not match a sheet.
+ICON_NAMES = ["nozzle", "bed", "chamber", "fan", "light", "spool", "home", "control", "files", "box", "gear",
+              "play", "pause", "stop", "up", "down", "left", "right", "check", "warning"]
+ICON_BGS = [Theme.BG, Theme.SURFACE, Theme.SURFACE2, Theme.RAISED, Theme.ACCENT, Theme.ACCENT_DIM]
+ICON_PIC = {24: 0, 32: 6}  # id of the first strip of each size; strips follow ICON_BGS order
+CORNER_RADII = [4, 6, 8, 10, 12, 16, 20, 24]
+CORNER_Y = [0, 4, 10, 18, 28, 40, 56, 76]
+CORNER_PIC = {  # (fill, backdrop) -> picture id
+    (Theme.SURFACE, Theme.BG): 12, (Theme.SURFACE2, Theme.SURFACE): 13, (Theme.RAISED, Theme.SURFACE): 14,
+    (Theme.SURFACE2, Theme.BG): 15, (Theme.RAISED, Theme.BG): 16, (Theme.ACCENT, Theme.BG): 17,
+    (Theme.ACCENT, Theme.SURFACE): 18, (Theme.ACCENT_DIM, Theme.SURFACE): 19, (Theme.ERR_DIM, Theme.SURFACE): 20,
+    (Theme.BG, Theme.SURFACE): 21,
 }
 
 
-def big_char_width(size: int, ch: str) -> int:
-    if ch in ".:":
-        return max(4, size // 6)
-    if ch == "%":
-        return int(size * 0.6)
-    return int(size * 0.55)
+def xpic(x: int, y: int, w: int, h: int, sx: int, sy: int, pic: int) -> str:
+    return "xpic %d,%d,%d,%d,%d,%d,%d" % (x, y, w, h, sx, sy, pic)
 
 
-def big_char(x: int, y: int, size: int, ch: str, fg: int, bg: int) -> List[str]:
-    """One character of the large display font, `size` px high, background included."""
-    w = big_char_width(size, ch)
-    t = max(3, size // 9)  # stroke
-    cmds = [fill(Rect(x, y, w, size), bg)]
-    if ch == ".":
-        cmds.append(fill(Rect(x, y + size - t, t, t), fg))
-        return cmds
-    if ch == ":":
-        cmds += [fill(Rect(x, y + size // 3 - t // 2, t, t), fg), fill(Rect(x, y + 2 * size // 3, t, t), fg)]
-        return cmds
-    if ch == "%":
-        rr = max(2, t)
-        cmds += [disc(x + rr, y + rr + 1, rr, fg), disc(x + w - rr - 1, y + size - rr - 2, rr, fg)]
-        for k in range(t):
-            cmds.append(line(x + w - 2 - k, y + 1, x + 1 - k + t, y + size - 2, fg))
-        return cmds
-    half = size // 2
-    seg = {
-        "a": Rect(x + t, y, w - 2 * t, t),
-        "b": Rect(x + w - t, y + t, t, half - t),
-        "c": Rect(x + w - t, y + half, t, half - t),
-        "d": Rect(x + t, y + size - t, w - 2 * t, t),
-        "e": Rect(x, y + half, t, half - t),
-        "f": Rect(x, y + t, t, half - t),
-        "g": Rect(x + t, y + half - t // 2, w - 2 * t, t),
-    }
-    for s in SEGMENTS.get(ch, ""):
-        cmds.append(fill(seg[s], fg))
-    return cmds
+def icon(name: str, x: int, y: int, size: int, bg: int) -> str:
+    """One icon (24 or 32 px) on the strip baked for the backdrop colour nearest to `bg`."""
+    k = min(range(len(ICON_BGS)), key=lambda i: _distance(ICON_BGS[i], bg))
+    return xpic(x, y, size, size, ICON_NAMES.index(name) * size, 0, ICON_PIC[size] + k)
 
 
-def big_width(s: str, size: int, gap: int) -> int:
-    return sum(big_char_width(size, ch) + gap for ch in s) - gap if s else 0
+def _distance(a: int, b: int) -> int:
+    return sum((p - q) ** 2 for p, q in zip(unrgb(a), unrgb(b)))
+
+
+def rounded(r: Rect, color: int, radius: int = 10, bg: Optional[int] = None) -> List[str]:
+    """A filled rounded rectangle: three fills and four corners (anti-aliased sprites when the
+    fill/backdrop pair and radius have a sheet, else filled discs)."""
+    radius = max(0, min(radius, (r.w - 1) // 2, (r.h - 1) // 2))
+    if radius < 2:
+        return [fill(r, color)]
+    cmds = [  # three fills that do not overlap (the display pays per pixel)
+        fill(Rect(r.x + radius, r.y, r.w - 2 * radius, r.h), color),
+        fill(Rect(r.x, r.y + radius, radius, r.h - 2 * radius), color),
+        fill(Rect(r.x + r.w - radius, r.y + radius, radius, r.h - 2 * radius), color),
+    ]
+    x2, y2 = r.x + r.w - radius, r.y + r.h - radius
+    pic = CORNER_PIC.get((color, bg))
+    if pic is not None and radius in CORNER_RADII:
+        sy = CORNER_Y[CORNER_RADII.index(radius)]
+        return cmds + [xpic(r.x, r.y, radius, radius, 0, sy, pic), xpic(x2, r.y, radius, radius, radius, sy, pic),
+                       xpic(r.x, y2, radius, radius, 2 * radius, sy, pic), xpic(x2, y2, radius, radius, 3 * radius, sy, pic)]
+    x2, y2 = x2 - 1, y2 - 1
+    return cmds + [disc(r.x + radius, r.y + radius, radius, color), disc(x2, r.y + radius, radius, color),
+                   disc(r.x + radius, y2, radius, color), disc(x2, y2, radius, color)]
+
+
+def big_font(size: int) -> int:
+    """Digit font for a requested glyph height (the 48 px font draws ~35 px digits, the 96 px one ~70)."""
+    return FONT_D48 if size <= 52 else FONT_D96
+
+
+def big_width(s: str, size: int, gap: int = 0) -> int:
+    return text_width(clean(s), big_font(size))
 
 
 # --- Retained canvas -------------------------------------------------------
@@ -201,7 +208,7 @@ def bbox(cmds: Sequence[str]) -> Optional[Rect]:
     for cmd in cmds:
         verb = cmd.split(" ", 1)[0]
         n = [int(v) for v in _NUMS.findall(cmd.split('"', 1)[0][len(verb):])]
-        if verb in ("fill", "xstr") and len(n) >= 4:
+        if verb in ("fill", "xstr", "xpic") and len(n) >= 4:
             box = (n[0], n[1], n[0] + n[2], n[1] + n[3])
         elif verb == "cirs" and len(n) >= 3:
             box = (n[0] - n[2], n[1] - n[2], n[0] + n[2] + 1, n[1] + n[2] + 1)

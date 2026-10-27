@@ -32,7 +32,7 @@ FAILURES = {
 
 
 class SerialLink:
-    def __init__(self, device: str, fast: int = 921600, slow: int = 115200, page: str = "logo"):
+    def __init__(self, device: str, fast: int = 921600, slow: int = 115200, page: str = "canvas"):
         self.device = device
         self.fast = fast
         self.slow = slow
@@ -97,7 +97,10 @@ class SerialLink:
                 if not self._alive():
                     self.port.baudrate = self.slow
                     raise IOError("display lost after switching to %d baud" % self.fast)
-            for cmd in ("bkcmd=2", "page %s" % self.page, "tm0.en=0", "sendxy=1", "thsp=0", "thup=1"):
+            setup = ["bkcmd=2", "page %s" % self.page, "sendxy=1", "thsp=0", "thup=1"]
+            if self.page == "logo":  # QIDI firmware: stop the logo page timer (plus4-canvas.tft has none)
+                setup.insert(2, "tm0.en=0")
+            for cmd in setup:
                 self._write(cmd)
                 time.sleep(0.03)
             self._frames(0.2)  # the logo page prints 0x91 on load

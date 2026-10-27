@@ -21,6 +21,7 @@ from . import widgets as ui
 TOP = Rect(0, 0, 800, 44)
 CONTENT = Rect(12, 52, 776, 348)
 NAV = Rect(0, 408, 800, 72)
+NAV_ICONS = {"home": "home", "control": "control", "files": "files", "box": "box", "system": "gear"}
 
 
 class Page:
@@ -303,7 +304,8 @@ class App:
         cells = Rect(8, NAV.y + 8, 784, NAV.h - 16).split_h(len(items), 8)
         for (nav_id, caption), cell in zip(items, cells):
             ui.button(c, "nav/" + nav_id, cell, caption, (lambda n=nav_id: self.go_nav(n)),
-                      style=ui.ACCENT if page.nav == nav_id else ui.GHOST, bg=Theme.BG, radius=8)
+                      style=ui.ACCENT if page.nav == nav_id else ui.GHOST, bg=Theme.BG, radius=8,
+                      icon_name=NAV_ICONS.get(nav_id, ""))
 
     def _draw_modal(self, c: Canvas):
         m = self.modal

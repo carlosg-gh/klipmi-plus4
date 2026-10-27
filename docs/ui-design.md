@@ -68,3 +68,10 @@ Each page gets a table in `docs/pages/<page>.md`: component name, type, id, set 
 - Which stock pages to keep as they are (graphics) versus redraw.
 - Fonts: only the stock fonts are available in the project; check English glyph coverage and sizes before laying out text.
 - Whether to ship `.tft` per release or only the `.HMI`.
+
+## Own HMI: plus4-canvas.tft (2026-10-27)
+The canvas now targets our own firmware, `hmi/plus4-canvas/` (see its README for ids and measurements): one blank `canvas` page, boots at 921600 baud, Inter 16/20/24/32 for text, SemiBold digits 48/96 for the big numbers, 20 white Material Symbols icons (24 and 32 px) and anti-aliased rounded-corner sheets, both baked against the Theme colours (pictures have no alpha).
+- `gfx.py`: font ids and real Inter metrics (`metrics.py`, from `tools/font_metrics.js`) for fitting and layout; `rounded(..., bg)` uses `xpic` corners when the fill/backdrop pair has a sheet and the radius is 4-24 (else filled discs); `icon()`; `big_text` uses the digit fonts, one part per character.
+- `widgets.button(icon_name=...)` draws an icon left of the caption; the nav bar uses it.
+- `link.py` defaults to page `canvas` (no timer to stop); `page="logo"` still works with QIDI's firmware.
+- `tools/preview.py` renders with the same Inter files and pictures (`--device` draws on the real screen), previews in `docs/preview/`.

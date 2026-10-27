@@ -65,4 +65,20 @@ Adding or reordering pictures renumbers the ids: keep this table, `assets/pics/p
 ## Rebuild
 1. `node tools/hmi_assets.js` (only if icons or palette changed), delete the pictures in the editor's picture list, re-add them one at a time in the id order above.
 2. Compile (toolbar), File > "output production file" with the folder set to this directory.
-3. Flash: `~/klipmi/venv/bin/python ~/klipmi/flash_tft.py --baud 115200 --upload-baud 921600 plus4-canvas.tft` on the printer (screen must be at the baud given by `--baud`).
+3. Flash: `~/klipmi/venv/bin/python ~/klipmi/flash_tft.py --baud 921600 plus4-canvas.tft` on the printer (this firmware boots at 921600; a screen still on QIDI firmware that was not driven by klipmi answers at 115200, so use `--baud 115200 --upload-baud 921600`).
+
+## Measured on the real screen (2026-10-27, 921600 baud, `tools/bench.py`, 60 commands per test, ms per command incl. flow control)
+| command | window 256 B | window 900 B (what the writer uses) |
+|---|---|---|
+| `xstr` Inter16 400x30 / Inter20 / Inter24 / Inter32 | 6.8 / 9.8 / 10.2 / 11.2 | 4.9 / 6.6 / 7.2 / 9.2 |
+| `xstr` Digit48 300x60 / Digit96 400x110 | 6.2 / 12.2 | 5.1 / 8.8 |
+| `xstr` Inter16 80x24 ("215 C") | 4.1 | 2.1 |
+| `pic` icon strip 480x24 / 640x32 / corner sheet 96x100 | 1.4 / 1.7 / 2.1 | 0.8 / 1.1 / 1.8 |
+| `xpic` icon 24x24 / 32x32, corner 12x12 / 24x24 | 2.7 | 0.9 |
+| `picq` 24x24 | 2.1 | 0.9 |
+
+Earlier QIDI-firmware figures: fill ~0.9 ms, `cirs` r10 3 ms / r30 11 ms, `xstr` 5-7 ms. So an `xpic` corner costs a third of a disc, and Inter text costs about the same as the old fonts. No `pic`/`xpic`/`xstr` id error came back, so all 6 fonts and 22 pictures resolve. Upload: 525,816 B in 9 s at 921600.
+
+A full page (about 200 commands) is on the glass in 130-410 ms (`preview.py --device`): home 326, control 357, files 139, box 413, system 322, printing 129.
+
+Anti-aliasing: the font tool's "anti-aliasing" box changes the generated file by only 68 B (Microsoft Sans Serif 16, ASCII: 2518 B on, 2450 B off), so the stored glyphs look the same either way; look at the glass to judge whether text is smoothed. Rounded corners and icons are anti-aliased regardless (they are pictures).

@@ -3,9 +3,11 @@
 """Render the canvas UI to PNG files without a display, from a recorded printer status.
 
     preview.py OUTDIR [status.json]
+    preview.py --device [status.json]     draw pages on the real display (needs the serial port to itself)
 
-Interprets the TJC drawing commands (fill, xstr, cirs, line) with Pillow, so the
-pictures show what the display would draw (fonts are approximated).
+Interprets the TJC drawing commands (fill, xstr, xpic, cirs, line) with Pillow, using the
+plus4-canvas.tft assets (Inter fonts, the PNGs the pictures were built from), so the
+pictures show what the display would draw (the font rasteriser differs slightly).
 """
 
 import asyncio
@@ -21,22 +23,37 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from klipmi.canvas.app import App  # noqa: E402
 from klipmi.canvas.gfx import unrgb  # noqa: E402
 
-FONT_PX = {0: 24, 1: 19, 2: 15}
+HMI = os.path.join(os.path.dirname(__file__), "..", "hmi", "plus4-canvas")
+FONTS = {0: ("Regular", 16), 1: ("Regular", 20), 2: ("Regular", 24), 3: ("Regular", 32),
+         4: ("SemiBold", 48), 5: ("SemiBold", 96)}
+PIC_FILES = ([f"ic{n}_{bg}" for n in (24, 32) for bg in ("bg", "surface", "surface2", "raised", "accent", "accent_dim")]
+             + ["cr_surface_bg", "cr_surface2_surface", "cr_raised_surface", "cr_surface2_bg", "cr_raised_bg",
+                "cr_accent_bg", "cr_accent_surface", "cr_accent_dim_surface", "cr_err_dim_surface", "cr_bg_surface"])
 
 
-def load_font(px):
-    for path in ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                 "C:/Windows/Fonts/segoeuib.ttf"):
+def load_font(style, px):
+    for path in (os.path.join(HMI, "assets", "inter", "extras", "ttf", "Inter-%s.ttf" % style),
+                 os.path.expanduser("~/klipmi/hmi/assets/Inter-%s.ttf" % style),
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "C:/Windows/Fonts/segoeui.ttf"):
         if os.path.exists(path):
             return ImageFont.truetype(path, px)
     return ImageFont.load_default()
+
+
+def load_pic(pid):
+    for base in (os.path.join(HMI, "assets", "pics"), os.path.expanduser("~/klipmi/hmi/assets")):
+        path = os.path.join(base, PIC_FILES[pid] + ".png")
+        if os.path.exists(path):
+            return Image.open(path).convert("RGB")
+    raise FileNotFoundError(PIC_FILES[pid])
 
 
 class Glass:
     def __init__(self):
         self.img = Image.new("RGB", (800, 480), (0, 0, 0))
         self.d = ImageDraw.Draw(self.img)
-        self.fonts = {k: load_font(v) for k, v in FONT_PX.items()}
+        self.fonts = {k: load_font(*v) for k, v in FONTS.items()}
+        self.pics = {}
         self.count = 0
 
     def __call__(self, cmd: str):
@@ -57,10 +74,18 @@ class Glass:
             s = m.group(11)
             self.d.rectangle([x, y, x + w - 1, y + h - 1], fill=unrgb(bg))
             f = self.fonts[font]
-            tw, th = self.d.textbbox((0, 0), s, font=f)[2:]
+            tw = int(f.getlength(s))
+            ascent, descent = f.getmetrics()
             tx = x if xc == 0 else (x + (w - tw) // 2 if xc == 1 else x + w - tw)
-            ty = y + (h - th) // 2 if yc == 1 else y
-            self.d.text((tx, ty), s, font=f, fill=unrgb(fg))
+            ty = y + (h - (ascent + descent)) // 2 if yc == 1 else y
+            clip = Image.new("RGB", (w, h), unrgb(bg))
+            ImageDraw.Draw(clip).text((tx - x, ty - y), s, font=f, fill=unrgb(fg))
+            self.img.paste(clip, (x, y))
+        elif cmd.startswith("xpic "):
+            x, y, w, h, sx, sy, pid = map(int, cmd[5:].split(","))
+            if pid not in self.pics:
+                self.pics[pid] = load_pic(pid)
+            self.img.paste(self.pics[pid].crop((sx, sy, sx + w, sy + h)), (x, y))
 
 
 class FakeClient:
@@ -125,6 +150,52 @@ def base_status(path):
         status["mmu"]["filament_pos"] = 10
         status.setdefault("aht10 box1_env", {"humidity": 28})
     return status
+
+
+async def device_demo(status_path):
+    """Draw a few pages on the real display and time how long each takes to appear."""
+    import time
+
+    from klipmi.canvas.link import SerialLink
+    from klipmi.ui.plus4canvas import box, pages
+
+    link = SerialLink("/dev/ttyS1", page="canvas")
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, link.open)
+    link.start(loop)
+    printer = FakePrinter()
+    app = App(link.write, printer, settings_path=os.devnull, nav=[
+        ("home", "Home", lambda a: True), ("control", "Control", lambda a: True), ("files", "Files", lambda a: True),
+        ("box", "Box", lambda a: a.has("mmu")), ("system", "System", lambda a: True)])
+    status = base_status(status_path)
+    app.available = list(status)
+    app.status = status
+    app.klippy = "ready"
+    for nav_id, page in (("home", pages.HomePage), ("control", pages.ControlPage), ("files", pages.FilesPage),
+                         ("box", box.BoxPage), ("system", pages.SystemPage)):
+        app.register(nav_id, page)
+
+    async def show(name, pause=5):
+        await asyncio.sleep(0.05)
+        start = time.time()
+        app.render()
+        while not link.outbox.empty():
+            await asyncio.sleep(0.005)
+        await loop.run_in_executor(None, link._sync)
+        print("%-16s on the glass after %5.0f ms" % (name, (time.time() - start) * 1000), flush=True)
+        await asyncio.sleep(pause)
+
+    app.go(pages.HomePage)
+    await show("home")
+    for nav_id in ("control", "files", "box", "system"):
+        app.go_nav(nav_id)
+        await show(nav_id)
+    status["print_stats"] = {"state": "printing", "filename": "benchy_PLA_0.2mm.gcode", "print_duration": 2410,
+                             "info": {"current_layer": 57, "total_layer": 240}}
+    status["display_status"] = {"progress": 0.37, "message": ""}
+    app.go(pages.PrintingPage)
+    await show("printing", 8)
+    link.running = False
 
 
 async def main(out, status_path):
@@ -194,4 +265,7 @@ async def main(out, status_path):
 
 
 if __name__ == "__main__":
-    asyncio.run(main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else ""))
+    if sys.argv[1] == "--device":
+        asyncio.run(device_demo(sys.argv[2] if len(sys.argv) > 2 else ""))
+    else:
+        asyncio.run(main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else ""))
