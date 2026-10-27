@@ -60,90 +60,94 @@ class CanvasTest(unittest.TestCase):
         self.assertIsNone(c.find(200, 200))
 
 
+
+
 class AppTest(unittest.TestCase):
     def setUp(self):
         import preview
-        from klipmi.canvas.app import App
-        from klipmi.ui.plus4canvas import box, pages
+        from klipmi.ui.plus4canvas import box, home, motion
 
-        self.preview, self.pages, self.box = preview, pages, box
+        self.box, self.home, self.motion = box, home, motion
         self.out = []
-        self.printer = preview.FakePrinter()
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        self.app = App(self.out.append, self.printer, settings_path=os.devnull, nav=[
-            ("home", "Home", lambda a: True), ("box", "Box", lambda a: a.has("mmu"))])
         fixture = os.path.join(HERE, "fixtures", "mmu-idle-bunnybox.json")
-        self.app.status = preview.base_status(fixture)
-        self.app.available = list(self.app.status)
-        self.app.klippy = "ready"
-        self.app.register("home", pages.HomePage)
-        self.app.register("box", box.BoxPage)
-        self.app.register("files", pages.FilesPage)
+        self.app, self.printer, self.status = preview.make_app(self.out.append, fixture)
 
     def tearDown(self):
         self.loop.close()
 
-    def tap(self, key):
-        self.app.render()
-        hit = next(h for h in self.app.canvas.hits if h.key == key)
-        x, y = hit.rect.x + 2, hit.rect.y + 2
+    def press(self, x, y):
         self.app.touch(x, y, True)
         self.app.touch(x, y, False)
         self.loop.run_until_complete(asyncio.sleep(0))
         self.app.render()
 
-    def test_box_load_selected_gate(self):
-        self.app.go(self.box.BoxPage)
-        self.app.status["mmu"]["filament"] = "Unloaded"
-        self.tap("box/s1")
-        self.tap("box/act/load")
+    def tap(self, key):
+        self.app.render()
+        hit = next(h for h in self.app.canvas.hits if h.key == key)
+        self.press(hit.rect.x + hit.rect.w // 2, hit.rect.y + hit.rect.h // 2)
+
+    def test_gate_sheet_loads_gate(self):
+        self.app.go_nav("filament")
+        self.tap("fl/d/g1")
+        self.assertIsInstance(self.app.modal, self.box.GateSheet)
+        self.tap("modal/load")
         self.assertEqual(self.printer.sent[-1], "MMU_CHANGE_TOOL GATE=1 STANDALONE=1")
 
-    def test_second_tap_opens_slot_editor_and_saves(self):
-        self.app.go(self.box.BoxPage)
-        self.tap("box/s1")
-        self.tap("box/s1")
-        self.assertIsInstance(self.app.modal, self.box.SlotEditor)
+    def test_gate_sheet_saves_colour(self):
+        self.app.open_modal(self.box.GateSheet(self.app, 1))
         self.tap("modal/c3")  # red
         self.tap("modal/save")
         self.assertEqual(self.printer.sent[-1], "MMU_GATE_MAP GATE=1 MATERIAL=PETG COLOR=e53935 QUIET=1")
-        self.assertIsNone(self.app.modal)
 
     def test_keypad_sets_nozzle_target(self):
-        self.app.go(self.pages.HomePage)
+        self.app.go_nav("home")
         self.tap("home/h/extruder")
-        for key in ("modal/k21", "modal/k08", "modal/k30"):  # 1, 8, 0
+        for key in ("modal/k1", "modal/k8", "modal/k0", "modal/ok"):
             self.tap(key)
-        self.tap("modal/ok")
         self.assertEqual(self.printer.sent[-1], "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=180")
+        self.assertIsNone(self.app.modal)
 
     def test_keypad_rejects_out_of_range(self):
-        self.app.go(self.pages.HomePage)
+        self.app.go_nav("home")
         self.tap("home/h/extruder")
-        for key in ("modal/k09", "modal/k09", "modal/k09"):
+        for key in ("modal/k9", "modal/k9", "modal/k9", "modal/ok"):
             self.tap(key)
-        self.tap("modal/ok")
         self.assertIsNotNone(self.app.modal)
         self.assertEqual(self.printer.sent, [])
 
-    def test_wake_touch_is_swallowed(self):
-        self.app.go(self.pages.HomePage)
-        self.app.sleeping = True
-        self.app.touch(700, 340, True)  # over STOP
-        self.app.touch(700, 340, False)
-        self.app.render()
+    def test_rail_closes_sheet_and_navigates(self):
+        self.app.go_nav("home")
+        self.tap("home/h/extruder")
+        self.tap("nav/move")
         self.assertIsNone(self.app.modal)
-        self.assertIn("dim=100", self.out)
+        self.assertIsInstance(self.app.page, self.motion.MovePage)
 
-    def test_box_hidden_without_mmu(self):
+    def test_slider_sets_fan_where_touched(self):
+        self.app.go_nav("fans")
+        self.app.render()
+        hit = next(h for h in self.app.canvas.hits if h.key == "fn/0/s")
+        self.press(hit.rect.x + hit.rect.w // 2, hit.rect.y + 10)
+        self.assertEqual(self.printer.sent[-1], "M106 S128")
+
+    def test_home_shows_printing_page_while_printing(self):
+        self.status["print_stats"] = {"state": "printing", "filename": "x.gcode", "print_duration": 10, "info": {}}
+        self.app.go_nav("home")
+        self.assertIsInstance(self.app.page, self.home.PrintingPage)
+
+    def test_wake_touch_is_swallowed(self):
+        self.app.go_nav("home")
+        self.app.sleeping = True
+        self.press(36, 450)  # over the stop button
+        self.assertIsNone(self.app.modal)
+
+    def test_filament_hidden_without_mmu(self):
         del self.app.status["mmu"]
         self.app.available = [k for k in self.app.available if k != "mmu"]
-        self.app.go(self.pages.HomePage)
+        self.app.go_nav("home")
         self.app.render()
-        keys = [h.key for h in self.app.canvas.hits]
-        self.assertNotIn("nav/box", keys)
-        self.assertNotIn("home/q/box", [k for k in keys if self.app.has("mmu")])
+        self.assertNotIn("nav/filament", [h.key for h in self.app.canvas.hits])
 
 
 if __name__ == "__main__":

@@ -1,49 +1,141 @@
 {
+ "order": [
+  "ic24_muted_bg",
+  "ic24_text_bg",
+  "ic24_accent_surface",
+  "ic24_muted_surface",
+  "ic24_text_surface",
+  "ic24_ok_surface",
+  "ic24_muted_surface2",
+  "ic24_text_surface2",
+  "ic24_bg_accent",
+  "ic24_err_ink_err_dim",
+  "ic32_muted_bg",
+  "ic32_text_bg",
+  "ic32_accent_surface",
+  "ic32_muted_surface",
+  "ic32_text_surface",
+  "ic32_ok_surface",
+  "ic32_muted_surface2",
+  "ic32_text_surface2",
+  "ic32_bg_accent",
+  "ic32_err_ink_err_dim",
+  "corners"
+ ],
  "icons": [
+  "home",
+  "move",
+  "temp",
+  "fan",
+  "spool",
+  "files",
+  "target",
+  "sys",
+  "stop",
   "nozzle",
   "bed",
   "chamber",
-  "fan",
+  "drop",
   "light",
-  "spool",
-  "home",
-  "control",
-  "files",
-  "box",
-  "gear",
+  "power",
+  "wifi",
   "play",
   "pause",
-  "stop",
+  "x",
+  "clock",
+  "hour",
+  "flag",
+  "layers",
+  "gauge",
+  "flow",
+  "z",
+  "plus",
+  "minus",
+  "reset",
+  "cube",
+  "check",
+  "del",
   "up",
   "down",
   "left",
   "right",
-  "check",
-  "warning"
- ],
- "icons2": [
-  "mmu",
-  "wifi",
-  "info",
+  "level",
+  "extrude",
+  "retract",
+  "arrow",
+  "snow",
+  "part",
+  "side",
+  "exhaust",
+  "eject",
   "refresh",
+  "wrench",
+  "bypass",
+  "guard",
+  "back",
+  "sort",
+  "folder",
+  "trash",
+  "weight",
+  "cal",
+  "wave",
+  "pid",
+  "screw",
+  "bolt",
+  "info",
+  "moon",
+  "sun",
+  "sound",
+  "reboot",
+  "warn",
   "lock"
  ],
- "icon2_bgs": [
-  "surface",
-  "surface2",
-  "accent"
- ],
- "icon_sizes": [
+ "per_row": 25,
+ "sizes": [
   24,
   32
  ],
- "icon_bgs": [
-  "bg",
-  "surface",
-  "surface2",
-  "raised",
-  "accent",
-  "accent_dim"
+ "inks": [
+  [
+   "muted",
+   "bg"
+  ],
+  [
+   "text",
+   "bg"
+  ],
+  [
+   "accent",
+   "surface"
+  ],
+  [
+   "muted",
+   "surface"
+  ],
+  [
+   "text",
+   "surface"
+  ],
+  [
+   "ok",
+   "surface"
+  ],
+  [
+   "muted",
+   "surface2"
+  ],
+  [
+   "text",
+   "surface2"
+  ],
+  [
+   "bg",
+   "accent"
+  ],
+  [
+   "err_ink",
+   "err_dim"
+  ]
  ],
  "radii": [
   4,
@@ -65,18 +157,10 @@
    "surface"
   ],
   [
-   "raised",
-   "surface"
-  ],
-  [
    "surface2",
    "bg"
   ],
   [
-   "raised",
-   "bg"
-  ],
-  [
    "accent",
    "bg"
   ],
@@ -85,46 +169,108 @@
    "surface"
   ],
   [
-   "accent_dim",
-   "surface"
+   "accent",
+   "surface2"
+  ],
+  [
+   "err_dim",
+   "bg"
   ],
   [
    "err_dim",
    "surface"
   ],
   [
+   "border",
+   "surface"
+  ],
+  [
+   "surface",
+   "border"
+  ],
+  [
+   "border",
+   "bg"
+  ],
+  [
+   "bg",
+   "border"
+  ],
+  [
    "bg",
    "surface"
+  ],
+  [
+   "surface2",
+   "accent"
+  ],
+  [
+   "text",
+   "bg"
+  ],
+  [
+   "text",
+   "surface"
+  ],
+  [
+   "surface2",
+   "text"
+  ],
+  [
+   "accent",
+   "text"
+  ],
+  [
+   "err_dim",
+   "text"
+  ],
+  [
+   "surface",
+   "text"
+  ],
+  [
+   "bg",
+   "text"
+  ],
+  [
+   "text",
+   "accent"
+  ],
+  [
+   "muted",
+   "surface2"
+  ],
+  [
+   "accent",
+   "err_dim"
   ]
  ],
+ "sheet": [
+  96,
+  100
+ ],
+ "sheets_per_row": 8,
  "files": {
-  "ic24_bg": 7099,
-  "ic24_surface": 7170,
-  "ic24_surface2": 7121,
-  "ic24_raised": 7082,
-  "ic24_accent": 6965,
-  "ic24_accent_dim": 7272,
-  "ic32_bg": 11172,
-  "ic32_surface": 11181,
-  "ic32_surface2": 11125,
-  "ic32_raised": 11246,
-  "ic32_accent": 11142,
-  "ic32_accent_dim": 11433,
-  "ic2_24_surface": 2714,
-  "ic2_24_surface2": 2695,
-  "ic2_24_accent": 2616,
-  "ic2_32_surface": 4086,
-  "ic2_32_surface2": 4025,
-  "ic2_32_accent": 3952,
-  "cr_surface_bg": 3977,
-  "cr_surface2_surface": 4028,
-  "cr_raised_surface": 4215,
-  "cr_surface2_bg": 4188,
-  "cr_raised_bg": 4237,
-  "cr_accent_bg": 4608,
-  "cr_accent_surface": 4676,
-  "cr_accent_dim_surface": 4463,
-  "cr_err_dim_surface": 4115,
-  "cr_bg_surface": 3917
+  "ic24_muted_bg": 25963,
+  "ic24_text_bg": 26480,
+  "ic24_accent_surface": 26553,
+  "ic24_muted_surface": 25629,
+  "ic24_text_surface": 26193,
+  "ic24_ok_surface": 26396,
+  "ic24_muted_surface2": 25029,
+  "ic24_text_surface2": 26152,
+  "ic24_bg_accent": 26484,
+  "ic24_err_ink_err_dim": 25846,
+  "ic32_muted_bg": 41439,
+  "ic32_text_bg": 42183,
+  "ic32_accent_surface": 42237,
+  "ic32_muted_surface": 40187,
+  "ic32_text_surface": 41797,
+  "ic32_ok_surface": 41906,
+  "ic32_muted_surface2": 39138,
+  "ic32_text_surface2": 41615,
+  "ic32_bg_accent": 42119,
+  "ic32_err_ink_err_dim": 41289,
+  "corners": 105023
  }
 }

@@ -1,217 +1,230 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Widgets: functions that draw one thing onto a Canvas and register its touch area.
 
-Every widget takes the colour it sits on (`bg`) so it can erase itself, and a key
-that is unique on the page. Buttons look pressed while `canvas.pressed` is their key.
+Every widget takes the colour it sits on (`bg`) so it can erase itself, and a key that is unique on the
+page. A pressed button keeps its face (so its baked icon still matches) and gets a light outline instead.
+
+Type: labels are Light 20/24 px in MUTED, values and button captions SemiBold 24/32 px, big readings the
+48/96 px digit fonts. Temperatures get a drawn degree ring (the fonts are ASCII only).
 """
 
-from typing import Callable, Optional, Sequence
+from typing import Callable, List, Optional, Sequence
 
-from .gfx import (CENTER, FONT_L, FONT_M, FONT_S, FONT_XS, LEFT, RIGHT, Canvas, Rect, Theme, big_font, big_width, clean,
-                  disc, fill, icon, mix, ring, rounded, text, text_width, wrap_px)
+from .gfx import (CENTER, FONT_D48, FONT_D96, FONT_MB, FONT_S, FONT_SB, FONT_XS, FONT_XSB, LEFT, RIGHT, Canvas, Rect,
+                  Theme, clean, disc, fill, icon, mix, ring, rounded, soft_disc, text, text_width)
 
-NORMAL, ACCENT, DANGER, GHOST, OK = "normal", "accent", "danger", "ghost", "ok"
+NORMAL, ACCENT, DANGER, OUTLINE, QUIET = "normal", "accent", "danger", "outline", "quiet"
 
-_STYLE = {
-    NORMAL: (Theme.SURFACE2, Theme.TEXT),
-    ACCENT: (Theme.ACCENT, Theme.BG),
-    DANGER: (Theme.ERR, Theme.TEXT),
-    GHOST: (Theme.SURFACE, Theme.MUTED),
-    OK: (Theme.OK, Theme.BG),
+_STYLE = {  # face, ink, icon ink (None: the face is the backdrop's colour, see button())
+    NORMAL: (Theme.SURFACE2, Theme.TEXT, Theme.TEXT),
+    ACCENT: (Theme.ACCENT, Theme.BG, Theme.BG),
+    DANGER: (Theme.ERR_DIM, Theme.ERR_INK, Theme.ERR_INK),
+    OUTLINE: (None, Theme.TEXT, Theme.TEXT),
+    QUIET: (None, Theme.MUTED, Theme.MUTED),  # no face, no outline: an icon or caption on the backdrop
 }
+RADIUS = 10
+LINE = {FONT_XS: 26, FONT_XSB: 26, FONT_S: 30, FONT_SB: 30, FONT_MB: 40, FONT_D48: 56, FONT_D96: 104}
+CAP = {FONT_XS: 15, FONT_XSB: 15, FONT_S: 18, FONT_SB: 18, FONT_MB: 24, 9: 24, FONT_D48: 35, FONT_D96: 70}
+DEG = {FONT_XS: (3, 1), FONT_XSB: (3, 2), FONT_S: (3, 2), FONT_SB: (4, 2), FONT_MB: (5, 2), 9: (5, 2),
+       FONT_D48: (7, 3), FONT_D96: (11, 4)}  # degree ring (radius, thickness)
 
 
 def card(c: Canvas, key: str, r: Rect, color: int = Theme.SURFACE, bg: int = Theme.BG, radius: int = 12,
-         erase: bool = False):
+         erase: bool = True):
     c.op(key, rounded(r, color, radius, bg), [fill(r, bg)] if erase else ())
 
 
-def label(c: Canvas, key: str, r: Rect, s: str, font: int = FONT_M, fg: int = Theme.TEXT, bg: int = Theme.SURFACE,
+def label(c: Canvas, key: str, r: Rect, s: str, font: int = FONT_XS, fg: int = Theme.MUTED, bg: int = Theme.SURFACE,
           align: int = LEFT):
     c.op(key, [text(r, s, font, fg, bg, align)], [fill(r, bg)])
 
 
-BORDER = mix(Theme.RAISED, Theme.TEXT, 0.22)
+def icon_label(c: Canvas, key: str, r: Rect, icon_name: str, s: str, bg: int = Theme.SURFACE, font: int = FONT_XS,
+               fg: int = Theme.MUTED, size: int = 24):
+    """A muted icon followed by a caption: the heading of a tile or row."""
+    y = r.y + (r.h - size) // 2
+    c.op(key, [fill(r, bg), icon(icon_name, r.x, y, size, bg, Theme.MUTED),
+               text(Rect(r.x + size + 10, r.y, r.w - size - 10, r.h), s, font, fg, bg, LEFT)], [fill(r, bg)])
 
 
-def button(c: Canvas, key: str, r: Rect, caption: str, action: Optional[Callable[[], None]],
-           style: str = NORMAL, bg: int = Theme.SURFACE, font: int = FONT_M, radius: int = 8,
-           active: bool = False, sub: str = "", icon_name: str = "", border: bool = False):
-    """A rounded button. `active` draws it selected (accent); disabled when `action` is None.
-    `icon_name` puts a 24 px icon left of the caption. `border` outlines it (for buttons on the page background)."""
-    face, ink = _STYLE[ACCENT if active and style == NORMAL else style]
-    edge = BORDER if border and not (active and style == NORMAL) and style != ACCENT else None
+def _deg(x: int, cy: int, font: int, fg: int) -> List[str]:
+    """A degree ring whose left edge is at `x`, aligned with the cap height around `cy`."""
+    radius, thick = DEG.get(font, (3, 2))
+    top = cy - CAP.get(font, 18) // 2
+    cx, cyy = x + radius, top + radius
+    return [ring(cx, cyy, radius - i, fg) for i in range(thick)]
+
+
+def deg_width(font: int) -> int:
+    radius, _ = DEG.get(font, (3, 2))
+    return 2 * radius + 3
+
+
+def value_cmds(r: Rect, s: str, font: int, fg: int, bg: int, align: int = LEFT, degree: bool = False,
+               suffix: str = "", suffix_font: int = FONT_XS, suffix_degree: bool = False,
+               suffix_fg: int = Theme.MUTED, suffix_gap: int = 8) -> List[str]:
+    """Commands for a reading such as `182°` or `42%` (one string, natural spacing), plus an optional
+    smaller muted suffix on the same baseline, such as `/ 215°`. Laid out from measured glyph widths."""
+    s, suffix = clean(s), clean(suffix)
+    w_main = text_width(s, font) + 1
+    w_deg = deg_width(font) if degree else 0
+    w_suf = (text_width(suffix, suffix_font) + suffix_gap + (deg_width(suffix_font) if suffix_degree else 0)) if suffix else 0
+    total = w_main + w_deg + w_suf
+    x0 = r.x if align == LEFT else (r.x + r.w - total if align == RIGHT else r.x + (r.w - total) // 2)
+    cy = r.y + r.h // 2
+    cmds = [fill(r, bg), text(Rect(x0, r.y, w_main + 1, r.h), s, font, fg, bg, LEFT)]
+    if degree:
+        cmds += _deg(x0 + w_main + 1, cy, font, fg)
+    if suffix:
+        sx = x0 + w_main + w_deg + suffix_gap
+        sw = text_width(suffix, suffix_font) + 1
+        base = cy + CAP.get(font, 18) // 2  # shared baseline
+        box_h = LINE.get(suffix_font, 26)
+        sy = base - box_h // 2 - CAP.get(suffix_font, 15) // 2
+        cmds.append(text(Rect(sx, sy, sw + 1, box_h), suffix, suffix_font, suffix_fg, bg, LEFT))
+        if suffix_degree:
+            cmds += _deg(sx + sw + 1, sy + box_h // 2, suffix_font, suffix_fg)
+    return cmds
+
+
+def value(c: Canvas, key: str, r: Rect, s: str, font: int, fg: int = Theme.TEXT, bg: int = Theme.SURFACE,
+          align: int = LEFT, degree: bool = False, suffix: str = "", suffix_font: int = FONT_XS,
+          suffix_degree: bool = False, suffix_fg: int = Theme.MUTED, suffix_gap: int = 8):
+    c.op(key, value_cmds(r, s, font, fg, bg, align, degree, suffix, suffix_font, suffix_degree, suffix_fg, suffix_gap),
+         [fill(r, bg)])
+
+
+def temp_str(t: Optional[float]) -> str:
+    return "--" if t is None else "%d" % round(t)
+
+
+def button(c: Canvas, key: str, r: Rect, caption: str = "", action: Optional[Callable[[], None]] = None,
+           style: str = NORMAL, bg: int = Theme.SURFACE, font: int = FONT_SB, icon_name: str = "", icon_size: int = 0,
+           vertical: bool = False, sub: str = "", radius: int = RADIUS, icon_ink: Optional[int] = None,
+           ink: Optional[int] = None, align: int = CENTER, selected: bool = False, face: Optional[int] = None):
+    """A rounded button: icon only, icon + caption (side by side or `vertical`), or caption over a muted `sub`.
+
+    OUTLINE buttons are a border ring on the backdrop; `selected` turns any NORMAL/OUTLINE button into ACCENT.
+    Disabled when `action` is None (muted ink). `face` overrides the style's face colour."""
+    if selected and style in (NORMAL, OUTLINE):
+        style = ACCENT
+    style_face, fg, ifg = _STYLE[style]
+    face = face if face is not None else style_face
+    fg, ifg = ink if ink is not None else fg, icon_ink if icon_ink is not None else (ink if ink is not None else ifg)
+    edge = Theme.BORDER if style == OUTLINE else None
+    if face is None:
+        face = bg
     if action is None:
-        face, ink = mix(face, bg, 0.5), mix(Theme.MUTED, face, 0.45)
-        edge = mix(edge, bg, 0.6) if edge is not None else None
-    elif c.pressed == key:
-        face = mix(face, Theme.TEXT, 0.25)
-    inner = r.inset(min(radius // 2, 6), 2)
-    if edge is not None:
+        fg = ifg = Theme.MUTED if style != ACCENT else mix(Theme.BG, face, 0.3)
+    pressed = c.pressed == key and action is not None
+    if pressed:  # a light ring around the unchanged face
+        cmds = rounded(r, Theme.TEXT, radius, bg) + rounded(r.inset(2), face, max(2, radius - 2), Theme.TEXT)
+    elif edge is not None:
         cmds = rounded(r, edge, radius, bg) + rounded(r.inset(2), face, max(2, radius - 2), edge)
-    else:
+    elif face != bg:
         cmds = rounded(r, face, radius, bg)
-    if icon_name and not caption:  # icon-only button (the sidebar)
-        size = 32 if min(r.w, r.h) >= 44 else 24
-        cmds.append(icon(icon_name, r.x + (r.w - size) // 2, r.y + (r.h - size) // 2, size, face))
-    elif icon_name:
-        cw = text_width(caption, font)
-        x0 = inner.x + max(0, (inner.w - cw - 32) // 2)
-        cmds.append(icon(icon_name, x0, r.y + (r.h - 24) // 2, 24, face))
-        inner = Rect(x0 + 32, inner.y, max(0, inner.w - (x0 - inner.x) - 32), inner.h)
-        cmds.append(text(inner, caption, font, ink, face, LEFT))
-    elif sub:
-        top, bottom = Rect(inner.x, inner.y + 2, inner.w, inner.h // 2), Rect(inner.x, inner.y + inner.h // 2, inner.w, inner.h // 2 - 2)
-        cmds += [text(top, caption, font, ink, face, CENTER), text(bottom, sub, FONT_S, mix(ink, face, 0.35), face, CENTER)]
     else:
-        cmds.append(text(inner, caption, font, ink, face, CENTER))
+        cmds = [fill(r, bg)]
+    size = icon_size or (32 if (vertical or not caption) and min(r.w, r.h) >= 56 else 24)
+    if icon_name and not caption:
+        cmds.append(icon(icon_name, r.x + (r.w - size) // 2, r.y + (r.h - size) // 2, size, face, ifg))
+    elif icon_name and vertical:
+        line = LINE.get(font, 30)
+        top = r.y + (r.h - size - 4 - line) // 2
+        cmds.append(icon(icon_name, r.x + (r.w - size) // 2, top, size, face, ifg))
+        cmds.append(text(Rect(r.x + 4, top + size + 4, r.w - 8, line), caption, font, fg, face, CENTER))
+    elif icon_name:
+        cw = text_width(caption, font) + 2
+        x0 = r.x + max(4, (r.w - cw - size - 10) // 2) if align == CENTER else r.x + 16
+        cmds.append(icon(icon_name, x0, r.y + (r.h - size) // 2, size, face, ifg))
+        cmds.append(text(Rect(x0 + size + 10, r.y + 2, r.x + r.w - x0 - size - 12, r.h - 4), caption, font, fg, face, LEFT))
+    elif sub:
+        line, sline = LINE.get(font, 30), 26
+        top = r.y + (r.h - line - sline) // 2
+        inner = r.inset(12, 0)
+        cmds += [text(Rect(inner.x, top, inner.w, line), caption, font, fg, face, align),
+                 text(Rect(inner.x, top + line, inner.w, sline), sub, FONT_XS, Theme.MUTED if style != ACCENT else
+                      mix(Theme.BG, face, 0.3), face, align)]
+    else:
+        cmds.append(text(r.inset(6, 2), caption, font, fg, face, align))
     c.op(key, cmds, [fill(r, bg)])
     if action is not None:
         c.hit(key, r, action)
 
 
-def wrapped(c: Canvas, key: str, r: Rect, s: str, font: int = FONT_S, fg: int = Theme.MUTED, bg: int = Theme.SURFACE,
-            max_lines: int = 3, line_h: int = 0, align: int = LEFT):
-    """A paragraph: one part per line, word-wrapped to the width of `r`."""
-    line_h = line_h or (34 if font == FONT_M else 30)
-    lines = wrap_px(s, r.w, font, max_lines)
-    for i in range(max_lines):
-        box = Rect(r.x, r.y + i * line_h, r.w, line_h)
-        c.op("%s/%d" % (key, i), [text(box, lines[i] if i < len(lines) else "", font, fg, bg, align)], [fill(box, bg)])
-
-
-def chip(c: Canvas, key: str, r: Rect, s: str, color: int, bg: int = Theme.SURFACE, ink: int = Theme.BG):
-    c.op(key, rounded(r, color, r.h // 2, bg) + [text(r.inset(r.h // 3, 0), s, FONT_S, ink, color, CENTER)], [fill(r, bg)])
+def chip(c: Canvas, key: str, r: Rect, s: str, color: int, bg: int = Theme.SURFACE, ink: int = Theme.BG,
+         font: int = FONT_XSB):
+    c.op(key, rounded(r, color, min(r.h // 2, 12), bg) + [text(r.inset(8, 0), s, font, ink, color, CENTER)], [fill(r, bg)])
 
 
 def dot(c: Canvas, key: str, x: int, y: int, radius: int, color: int, bg: int):
-    c.op(key, [disc(x, y, radius, color)], [disc(x, y, radius, bg)])
+    c.op(key, soft_disc(x, y, radius, color, bg), [disc(x, y, radius + 1, bg)])
 
 
 def bar(c: Canvas, key: str, r: Rect, frac: float, color: int = Theme.ACCENT, track: int = Theme.SURFACE2,
         bg: int = Theme.SURFACE):
-    """Progress bar with rounded ends; only the cut point moves between frames."""
+    """Progress bar with rounded ends."""
     frac = max(0.0, min(1.0, frac))
-    filled = int(r.w * frac)
     radius = r.h // 2
+    filled = int(r.w * frac)
     cmds = rounded(r, track, radius, bg)
     if filled > 0:
-        cmds += rounded(Rect(r.x, r.y, max(filled, 2 * radius), r.h), color, radius, track)
+        cmds += rounded(Rect(r.x, r.y, max(filled, 2 * radius), r.h), color, radius, bg if filled >= r.w - radius else track)
     c.op(key, cmds, [fill(r, bg)])
 
 
+def slider(c: Canvas, key: str, r: Rect, frac: float, on_set: Optional[Callable[[float], None]],
+           bg: int = Theme.SURFACE, color: int = Theme.ACCENT):
+    """A 16 px track with a handle; touching anywhere on it sets the value (0..1) at that point."""
+    frac = max(0.0, min(1.0, frac))
+    track = Rect(r.x, r.y + (r.h - 16) // 2, r.w, 16)
+    hx = track.x + 5 + int((track.w - 10) * frac)
+    cmds = [fill(r, bg)] + rounded(track, Theme.SURFACE2, 8, bg)
+    if frac > 0:  # the fill's right end hides under the handle
+        cmds += rounded(Rect(track.x, track.y, max(16, hx + 5 - track.x), 16), color, 8, bg)
+    knob = Rect(hx - 5, r.y + (r.h - 32) // 2, 10, 32)
+    cmds += rounded(knob, Theme.TEXT if on_set else Theme.MUTED, 4, bg)
+    c.op(key, cmds, [fill(r, bg)])
+    if on_set is not None:
+        c.hit(key, r, lambda x, y: on_set(max(0.0, min(1.0, (x - track.x - 5) / max(1, track.w - 10)))), wants_xy=True)
+
+
 def toggle(c: Canvas, key: str, r: Rect, on: bool, action: Optional[Callable[[], None]], bg: int = Theme.SURFACE):
-    """A switch: pill track with a knob."""
-    track = Theme.ACCENT if on else Theme.RAISED
+    """A switch: 40 px pill with a 32 px knob."""
+    track = Theme.ACCENT if on else Theme.SURFACE2
+    knob = Theme.TEXT if on else Theme.MUTED
+    pill = Rect(r.x, r.y + (r.h - 40) // 2, r.w, 40)
+    kx = pill.x + pill.w - 36 if on else pill.x + 4
+    cmds = [fill(r, bg)] + rounded(pill, track, 20, bg) + rounded(Rect(kx, pill.y + 4, 32, 32), knob, 16, track)
     if c.pressed == key:
-        track = mix(track, Theme.TEXT, 0.2)
-    radius = r.h // 2
-    knob_x = r.x + r.w - radius if on else r.x + radius
-    c.op(key, rounded(r, track, radius, bg) + [disc(knob_x, r.y + radius, radius - 4, Theme.TEXT)], [fill(r, bg)])
+        cmds += [ring(kx + 16, pill.y + 20, 17, Theme.TEXT)]
+    c.op(key, cmds, [fill(r, bg)])
     if action is not None:
         c.hit(key, r.inset(-8), action)
 
 
-def _cell(ch: str, font: int) -> int:
-    """Width of one big character's box: every digit gets the widest digit's cell (tabular figures), padded so
-    the glyph is never clipped."""
-    if ch.isdigit():
-        return max(text_width(d, font) for d in "0123456789") + 4
-    return text_width(ch, font) + 4
+def swatch(cmds: List[str], x: int, y: int, radius: int, color: int, bg: int):
+    """A colour dot; colours close to the backdrop get a ring so they stay visible."""
+    cmds += soft_disc(x, y, radius, color, bg)
+    if _close(color, bg):
+        cmds += [ring(x, y, radius, Theme.MUTED), ring(x, y, radius - 1, mix(Theme.MUTED, color, 0.5))]
 
 
-def big_text(c: Canvas, key: str, x: int, y: int, s: str, size: int, fg: int, bg: int, align: int = LEFT,
-             width: int = 0, gap: int = 0) -> int:
-    """Large digits (the SemiBold digit fonts); each character is its own part, so only changed ones redraw.
-
-    `size` is the box height (the 48 px font shows ~35 px digits, the 96 px one ~70). With `width` the string
-    is right- or centre-aligned in that width and the unused space is cleared. Returns the drawn width.
-    """
-    font = big_font(size)
-    s = clean(s)
-    total = sum(_cell(ch, font) for ch in s)
-    if width:
-        if align == RIGHT:
-            x0 = x + width - total
-        elif align == CENTER:
-            x0 = x + (width - total) // 2
-        else:
-            x0 = x
-        c.op(key + "/pad", [fill(Rect(x, y, max(0, x0 - x), size), bg),
-                            fill(Rect(x0 + total, y, max(0, x + width - x0 - total), size), bg)])
-        x = x0
-    for i, ch in enumerate(s):
-        w = _cell(ch, font)
-        box = Rect(x, y, w, size)
-        c.op("%s/%d" % (key, i), [text(box, ch, font, fg, bg, CENTER)], [fill(box, bg)])
-        x += w
-    return total
+def _close(a: int, b: int) -> bool:
+    from .gfx import unrgb
+    return sum((p - q) ** 2 for p, q in zip(unrgb(a), unrgb(b))) < 40 ** 2
 
 
-def temp_big(c: Canvas, key: str, x: int, y: int, value: float, size: int, fg: int, bg: int, unit_font: int = FONT_M):
-    """A temperature as big digits followed by a degree ring and C (the fonts have no degree sign)."""
-    n = big_text(c, key, x, y, "%d" % round(value), size, fg, bg)
-    rx = x + n + 3
-    top = y + size // 6
-    cw = text_width("C", unit_font)
-    zone = Rect(rx - 2, y, cw + 60, size)  # also wipes digits that vanished when the number got shorter
-    box = Rect(rx + 12, y + size // 6 + 2, cw + 6, size // 2 + 8)
-    c.op(key + "/unit", [fill(zone, bg), ring(rx + 4, top + 5, 4, fg), ring(rx + 4, top + 5, 3, fg),
-                         text(box, "C", unit_font, fg, bg, LEFT, 0)], [fill(zone, bg)])
-
-
-def temp_text(c: Canvas, key: str, r: Rect, value: float, font: int, fg: int, bg: int, align: int = LEFT,
-              prefix: str = ""):
-    """Small temperature text such as `210 °C` (ring drawn, since the fonts are ASCII)."""
-    num = "%s%d" % (prefix, round(value))
-    w_num, w_c = text_width(num, font), text_width("C", font)
-    total = w_num + 14 + w_c
-    x0 = r.x if align == LEFT else (r.x + r.w - total if align == RIGHT else r.x + (r.w - total) // 2)
-    cy = r.y + r.h // 2
-    cap = {7: 15, 8: 18, 9: 24}.get(font, 18)
-    ringy = cy - cap // 2 + 4
-    c.op(key, [fill(r, bg), text(Rect(x0, r.y, w_num + 2, r.h), num, font, fg, bg, LEFT),
-               ring(x0 + w_num + 6, ringy, 3, fg),
-               text(Rect(x0 + w_num + 12, r.y, w_c + 4, r.h), "C", font, fg, bg, LEFT)],
-         [fill(r, bg)])
-
-
-def segmented(c: Canvas, key: str, r: Rect, options: Sequence[str], selected: int,
-              on_select: Callable[[int], None], bg: int = Theme.SURFACE, gap: int = 8):
-    """A row of mutually exclusive choices (tabs, step sizes): separate rounded buttons, the chosen one in accent."""
-    c.op(key, [fill(r, bg)], [fill(r, bg)])
-    for i, cell in enumerate(r.split_h(len(options), gap)):
-        button(c, "%s/%d" % (key, i), cell, options[i], (lambda i=i: on_select(i)),
-               style=ACCENT if i == selected else NORMAL, bg=bg, font=FONT_S if cell.w < 90 else FONT_M, radius=8)
-
-
-def section(c: Canvas, key: str, r: Rect, icon_name: str, caption: str, bg: int = Theme.SURFACE):
-    """A card heading: small icon, then the title in muted capitals."""
-    c.op(key, [fill(r, bg), icon(icon_name, r.x, r.y + (r.h - 24) // 2, 24, bg),
-               text(Rect(r.x + 34, r.y, r.w - 34, r.h), caption.upper(), FONT_S, Theme.MUTED, bg, LEFT)], [fill(r, bg)])
-
-
-def tile_button(c: Canvas, key: str, r: Rect, icon_name: str, caption: str, sub: str,
-                action: Optional[Callable[[], None]], active: bool = False, danger: bool = False, bg: int = Theme.SURFACE):
-    """A square action tile: icon on top, caption, then a short state line."""
-    face, ink = (Theme.ACCENT, Theme.BG) if active else (Theme.SURFACE2, Theme.TEXT)
-    sub_ink = mix(ink, face, 0.35)
-    if danger:
-        ink, sub_ink = Theme.ERR, mix(Theme.ERR, face, 0.4)
-    if action is None:
-        face, ink, sub_ink = mix(face, bg, 0.5), Theme.FAINT, Theme.FAINT
-    elif c.pressed == key:
-        face = mix(face, Theme.TEXT, 0.25)
-    size = 32
-    cmds = rounded(r, face, 12, bg)
-    cx = r.x + (r.w - size) // 2
-    if icon_name and not danger:
-        cmds.append(icon(icon_name, cx, r.y + 14, size, face))
-    elif danger:  # no icon strip is baked on the neutral face for a red glyph: use a ring and bar as a stop sign
-        cmds += [disc(r.x + r.w // 2, r.y + 30, 14, Theme.ERR), disc(r.x + r.w // 2, r.y + 30, 11, face),
-                 fill(Rect(r.x + r.w // 2 - 6, r.y + 24, 12, 12), Theme.ERR)]
-    cmds.append(text(Rect(r.x + 4, r.y + 54, r.w - 8, 36), caption, FONT_S, ink, face, CENTER))
-    cmds.append(text(Rect(r.x + 4, r.y + 92, r.w - 8, 30), sub, FONT_S, sub_ink, face, CENTER))
-    c.op(key, cmds, [fill(r, bg)])
-    if action is not None:
-        c.hit(key, r, action)
+def spool(c: Canvas, key: str, cx: int, cy: int, radius: int, color: Optional[int], bg: int, hub: int,
+          ring_color: Optional[int] = None, erase_r: int = 0):
+    """A filament spool seen from the side: coloured disc, hub hole. `color` None draws an empty gate."""
+    cmds = [disc(cx, cy, erase_r or radius + 6, bg)]
+    if ring_color is not None:
+        cmds += [ring(cx, cy, radius + 5 - i, ring_color) for i in range(3)]
+    if color is None:
+        cmds += [ring(cx, cy, radius - i, Theme.BORDER) for i in range(3)]
+        cmds += [ring(cx, cy, radius * 4 // 10 - i, Theme.BORDER) for i in range(3)]
+    else:
+        swatch(cmds, cx, cy, radius, color, bg)
+        cmds += soft_disc(cx, cy, radius * 45 // 100, hub, color)
+    c.op(key, cmds, [disc(cx, cy, erase_r or radius + 6, bg)])

@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The app shell: status bar, navigation bar, pages, modals, toasts, screen sleep.
+"""The app shell: icon rail, status bar, pages, modals, toasts, screen sleep.
 
 Pages draw the whole frame each time; the Canvas turns that into the few commands
-that changed. While a modal is open the page underneath is frozen (not drawn), and
-closing the modal repaints everything.
+that changed. While a modal is open the page underneath is frozen (not drawn) but the
+rail and status bar stay live; closing the modal repaints the page area.
+Modals are either sheets (they cover CONTENT) or dialogs (a framed panel inside CONTENT).
 """
 
 import asyncio
@@ -14,21 +15,22 @@ import os
 import time
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Type
 
-from .gfx import (CENTER, FONT_L, FONT_M, FONT_S, LEFT, RIGHT, Canvas, Rect, Theme, fill, mix, rounded,
-                  text)
+from .gfx import (FONT_XSB, LEFT, Canvas, Rect, Theme, fill, icon, mix, rounded, soft_disc, text, text_width)
 from . import widgets as ui
 
-SIDE = Rect(0, 0, 80, 480)  # permanent icon sidebar
-TOP = Rect(88, 0, 712, 52)
-CONTENT = Rect(88, 56, 704, 416)
-AREA = Rect(80, 52, 720, 428)  # everything a page may repaint
-NAV_ICONS = {"home": "home", "control": "control", "files": "files", "box": "mmu", "system": "gear"}
+RAIL = Rect(0, 0, 72, 480)  # permanent icon rail
+TOP = Rect(72, 0, 728, 48)  # status bar
+CONTENT = Rect(72, 50, 720, 422)
+AREA = Rect(72, 48, 728, 432)  # everything a page may repaint
+RAIL_ITEM = 48
+STATE_COLOR = {"printing": Theme.ACCENT, "paused": Theme.WARN, "error": Theme.ERR, "complete": Theme.OK,
+               "cancelled": Theme.MUTED, "shutdown": Theme.ERR, "startup": Theme.WARN, "disconnected": Theme.ERR}
 
 
 class Page:
     title = ""
-    nav: Optional[str] = None  # nav item to highlight
-    full = False  # draw over the status and nav bars too
+    nav: Optional[str] = None  # rail item to highlight
+    bar_temps = True  # show heater readings in the status bar
 
     def __init__(self, app: "App"):
         self.app = app
@@ -44,13 +46,18 @@ class Page:
 
 
 class Modal(Page):
-    """A panel over a frozen page. Draws in `self.panel`."""
+    """Over a frozen page. A sheet (`sheet = True`) owns all of CONTENT on the page background; a dialog is a
+    framed SURFACE panel centred in CONTENT. Draws in `self.panel`."""
 
     width, height = 560, 300
+    sheet = False
 
     @property
     def panel(self) -> Rect:
-        return Rect((800 - self.width) // 2, (480 - self.height) // 2, self.width, self.height)
+        if self.sheet:
+            return CONTENT
+        return Rect(CONTENT.x + (CONTENT.w - self.width) // 2, CONTENT.y + (CONTENT.h - self.height) // 2,
+                    self.width, self.height)
 
     def close(self):
         self.app.close_modal(self)
@@ -85,7 +92,7 @@ class Settings:
 class App:
     def __init__(self, sink: Callable[[str], None], printer=None, settings_path: str = "",
                  nav: Sequence[Tuple[str, str, Callable[["App"], bool]]] = ()):
-        """`nav`: (id, caption, visible(app)) for each navigation item; pages declare `nav = id`."""
+        """`nav`: (id, icon, visible(app)) for each rail item; pages declare `nav = id`."""
         self.canvas = Canvas(sink)
         self.sink = sink
         self.printer = printer
@@ -109,6 +116,8 @@ class App:
         self.swallow = False
         self.listeners: List[Callable[[dict, dict], None]] = []
         self.frames = 0
+        self.on_estop: Optional[Callable[[], None]] = None  # the rail's stop button
+        self.printing_page: Optional[Type[Page]] = None  # what Home shows while a print runs
 
     # --- navigation ------------------------------------------------------------
 
@@ -118,6 +127,10 @@ class App:
     def go(self, page: Type[Page] | Page):
         if isinstance(page, type):
             page = page(self)
+        if self.modal is not None:  # the rail stays live under a modal: leaving the page closes it
+            self.modal.leave()
+            self.modal = None
+            self.close_area = None
         if self.page is not None:
             self.page.leave()
         self.page = page
@@ -128,9 +141,13 @@ class App:
 
     def go_nav(self, nav_id: str):
         if nav_id in self.nav_pages:
-            if self.page is not None and self.page.nav == nav_id and type(self.page) is self.nav_pages[nav_id]:
+            if self.page is not None and self.page.nav == nav_id and type(self.page) is self.nav_pages[nav_id] \
+                    and self.modal is None:
                 return
-            self.go(self.nav_pages[nav_id])
+            target = self.nav_pages[nav_id]
+            if nav_id == "home" and self.printing and self.printing_page is not None:
+                target = self.printing_page
+            self.go(target)
 
     def open_modal(self, modal: Modal):
         self.modal = modal
@@ -216,7 +233,7 @@ class App:
             if target is not None and target.key == self.canvas.pressed:
                 self.canvas.pressed = None
                 try:
-                    result = target.action()
+                    result = target.action(x, y) if target.wants_xy else target.action()
                     if inspect.isawaitable(result):
                         self.spawn(result)
                 except Exception:
@@ -266,54 +283,92 @@ class App:
             self.clear_content = False
         c.begin()
         self.frames += 1
+        page = self.page
+        if self.klippy != "ready" and self.offline_page is not None and not getattr(page, "allow_offline", False):
+            page = self.offline_page
+        if page is not None:
+            self._draw_top(c, self.modal or page)
+            self._draw_nav(c, self.modal if self.modal is not None and self.modal.nav else page)
         if self.modal is not None:
             # Keep the frozen page's parts as they are and draw only the modal
             for key in list(c.shown):
-                if not key.startswith("modal"):
+                if not (key.startswith("modal") or key.startswith("top") or key.startswith("nav")):
                     c.seen.add(key)
             self._draw_modal(c)
-        else:
-            page = self.page
-            if self.klippy != "ready" and self.offline_page is not None and not getattr(page, "allow_offline", False):
-                page = self.offline_page
-            if page is not None and not page.full:
-                self._draw_top(c, page)
-                self._draw_nav(c, page)
-            if page is not None:
-                page.draw(c)
+        elif page is not None:
+            page.draw(c)
         c.end()
+
+    def heater_readings(self):
+        """(icon, temperature) for the status bar."""
+        out = []
+        for obj, name in (("extruder", "nozzle"), ("heater_bed", "bed"), ("heater_generic chamber", "chamber")):
+            if self.has(obj):
+                out.append((name, self.get(obj, "temperature", None)))
+        return out
 
     def _draw_top(self, c: Canvas, page: Page):
         now = time.time()
+        bar = Rect(TOP.x + 6, 6, TOP.w - 14, 36)
         if self.toast_text and now < self.toast_until:
-            face = mix(self.toast_color, Theme.BG, 0.25)
-            ui.card(c, "top/toast", Rect(96, 6, 696, 44), face, radius=12)
-            c.op("top/toast/t", [text(Rect(112, 6, 664, 44), self.toast_text, FONT_S, Theme.TEXT, face, LEFT)])
+            face = mix(self.toast_color, Theme.BG, 0.3)
+            ui.card(c, "top/toast", Rect(TOP.x, 4, TOP.w - 8, 40), face, radius=10)
+            c.op("top/toast/t", [text(Rect(TOP.x + 16, 4, TOP.w - 40, 40), self.toast_text, FONT_XSB, Theme.TEXT, face, LEFT)])
             return
         c.op("top/bar", [fill(TOP, Theme.BG)])
-        c.op("top/bar/title", [text(Rect(100, 6, 440, 44), page.title, FONT_M, Theme.TEXT, Theme.BG, LEFT)])
         state = self.print_state if self.klippy == "ready" else self.klippy
-        color = {"printing": Theme.ACCENT, "paused": Theme.WARN, "error": Theme.ERR, "complete": Theme.OK,
-                 "cancelled": Theme.MUTED, "shutdown": Theme.ERR, "startup": Theme.WARN}.get(state, Theme.RAISED)
-        ink = Theme.TEXT if color in (Theme.RAISED, Theme.MUTED, Theme.ERR) else Theme.BG
-        ui.chip(c, "top/bar/state", Rect(548, 10, 140, 36), state.capitalize(), color, Theme.BG, ink)
-        c.op("top/bar/clock", [text(Rect(700, 6, 92, 44), time.strftime("%H:%M"), FONT_S, Theme.MUTED, Theme.BG, RIGHT)])
+        caption = {"standby": "Idle", "complete": "Done"}.get(state, state.capitalize())
+        if state in ("printing", "paused"):
+            caption += "  %d%%" % int((self.get("display_status", "progress", 0.0) or 0.0) * 100)
+        heating = any((self.get(o, "target", 0) or 0) > (self.get(o, "temperature", 0) or 0) + 2
+                      for o in ("extruder", "heater_bed", "heater_generic chamber") if self.has(o))
+        if state == "standby" and heating:
+            caption = "Heating"
+        color = STATE_COLOR.get(state, Theme.WARN if heating else Theme.OK)
+        cw = text_width(caption, FONT_XSB) + 4
+        c.op("top/bar/state", soft_disc(bar.x + 6, bar.y + 18, 5, color, Theme.BG) +
+             [text(Rect(bar.x + 20, bar.y, cw, 36), caption, FONT_XSB, Theme.TEXT, Theme.BG, LEFT),
+              fill(Rect(bar.x + 20 + cw, bar.y, 300 - cw, 36), Theme.BG)])
+        # right side, laid out from the right edge: clock, wifi, then the heaters
+        clock = time.strftime("%H:%M")
+        x = bar.x + bar.w
+        w = text_width(clock, FONT_XSB) + 2
+        x -= w
+        cmds = [fill(Rect(bar.x + 320, bar.y, bar.w - 320, 36), Theme.BG),
+                text(Rect(x, bar.y, w, 36), clock, FONT_XSB, Theme.TEXT, Theme.BG, LEFT)]
+        x -= 8 + 24
+        cmds.append(icon("wifi", x, bar.y + 6, 24, Theme.BG, Theme.MUTED))
+        if page.bar_temps:
+            for name, t in reversed(self.heater_readings()):
+                s = ui.temp_str(t)
+                w = text_width(s, FONT_XSB) + 1 + ui.deg_width(FONT_XSB)
+                x -= 18 + w
+                cmds += ui.value_cmds(Rect(x, bar.y, w, 36), s, FONT_XSB, Theme.TEXT, Theme.BG, LEFT, True)
+                x -= 6 + 24
+                cmds.append(icon(name, x, bar.y + 6, 24, Theme.BG, Theme.MUTED))
+        c.op("top/bar/right", cmds)
 
     def _draw_nav(self, c: Canvas, page: Page):
-        items = [(i, cap) for i, cap, visible in self.nav_items if visible(self)]
-        c.op("nav", [fill(SIDE, Theme.BG), fill(Rect(SIDE.w - 1, 0, 1, SIDE.h), Theme.SURFACE)])
-        n = len(items)
-        step = min(92, (SIDE.h - 24) // max(1, n))
-        for k, (nav_id, caption) in enumerate(items):
-            cell = Rect(8, 12 + k * step, 64, step - 8)
+        items = [(i, ic) for i, ic, visible in self.nav_items if visible(self)]
+        c.op("nav", [fill(RAIL, Theme.BG)])
+        for k, (nav_id, icon_name) in enumerate(items):
+            cell = Rect(8, 6 + k * (RAIL_ITEM + 4), 56, RAIL_ITEM)
+            on = page.nav == nav_id
             ui.button(c, "nav/" + nav_id, cell, "", (lambda n=nav_id: self.go_nav(n)),
-                      style=ui.ACCENT if page.nav == nav_id else ui.GHOST, bg=Theme.BG, radius=12,
-                      icon_name=NAV_ICONS.get(nav_id, ""))
+                      style=ui.QUIET if not on else ui.NORMAL, bg=Theme.BG, icon_name=icon_name, icon_size=32,
+                      icon_ink=Theme.ACCENT if on else Theme.MUTED, face=Theme.SURFACE if on else None)
+        ui.button(c, "nav/stop", Rect(8, RAIL.h - 6 - RAIL_ITEM, 56, RAIL_ITEM), "", self.on_estop, style=ui.DANGER,
+                  bg=Theme.BG, icon_name="stop", icon_size=32)
 
     def _draw_modal(self, c: Canvas):
         m = self.modal
         p = m.panel
-        c.op("modal", rounded(Rect(p.x - 2, p.y - 2, p.w + 4, p.h + 4), Theme.RAISED, 10) + rounded(p, Theme.SURFACE, 8))
+        if m.sheet:
+            c.op("modal", [fill(AREA, Theme.BG)])
+        else:  # a light frame, on a margin of page background so its corners have a known backdrop
+            outer = Rect(p.x - 10, p.y - 10, p.w + 20, p.h + 20)
+            c.op("modal", [fill(outer, Theme.BG)] + rounded(Rect(p.x - 2, p.y - 2, p.w + 4, p.h + 4), Theme.BORDER, 12, Theme.BG)
+                 + rounded(p, Theme.SURFACE, 10, Theme.BORDER))
         m.draw(c)
 
 

@@ -66,6 +66,7 @@ class Theme:
     SURFACE = rgb(30, 34, 41)
     SURFACE2 = rgb(44, 49, 58)
     RAISED = rgb(58, 64, 75)
+    BORDER = RAISED  # outlines, empty-gate rings, chart grid
     TEXT = rgb(236, 239, 244)
     MUTED = rgb(140, 148, 160)
     FAINT = rgb(90, 97, 108)
@@ -75,6 +76,7 @@ class Theme:
     WARN = rgb(255, 176, 32)
     ERR = rgb(240, 72, 72)
     ERR_DIM = rgb(110, 32, 36)
+    ERR_INK = rgb(255, 154, 154)  # text and icons on ERR_DIM
     COLD = rgb(80, 150, 255)
     HOT = rgb(255, 110, 40)
 
@@ -119,16 +121,27 @@ class Rect:
 def wrap_px(s: str, width: int, font: int, max_lines: int) -> List[str]:
     """Break text into lines no wider than `width` px (words stay whole; the last line gets .. when cut)."""
     lines: List[str] = []
-    for para in [clean(s)]:
-        line = ""
-        for word in para.split():
-            trial = (line + " " + word).strip()
-            if line and text_width(trial, font) > width:
-                lines.append(line)
-                line = word
-            else:
-                line = trial
-        lines.append(line)
+    words: List[Tuple[str, bool]] = []  # (piece, glued to the previous piece)
+    for word in clean(s).split():  # a word wider than the box (a file name) breaks after _ - . or anywhere
+        glued = False
+        while text_width(word, font) > width and len(word) > 1:
+            cut = len(word)
+            while cut > 1 and text_width(word[:cut], font) > width:
+                cut -= 1
+            soft = next((p for p in (word.rfind(ch, 0, cut) for ch in "_-.") if p > cut // 2), -1)
+            cut = soft + 1 if soft > 0 else cut
+            words.append((word[:cut], glued))
+            word, glued = word[cut:], True
+        words.append((word, glued))
+    line = ""
+    for word, glued in words:
+        trial = line + word if glued else (line + " " + word).strip()
+        if line and text_width(trial, font) > width:
+            lines.append(line)
+            line = word
+        else:
+            line = trial
+    lines.append(line)
     if len(lines) > max_lines:
         lines = lines[:max_lines]
         lines[-1] = fit(lines[-1] + " ..", width, font)
@@ -175,40 +188,55 @@ def ring(x: int, y: int, radius: int, color: int) -> str:
     return "cir %d,%d,%d,%d" % (x, y, radius, color)
 
 
+def soft_disc(x: int, y: int, radius: int, color: int, bg: int) -> List[str]:
+    """A filled circle whose stair-stepped edge is softened by two outlines blended towards the backdrop."""
+    return [disc(x, y, radius, color), ring(x, y, radius, mix(color, bg, 0.45)), ring(x, y, radius + 1, mix(color, bg, 0.8))]
+
+
 def line(x1: int, y1: int, x2: int, y2: int, color: int) -> str:
     return "line %d,%d,%d,%d,%d" % (x1, y1, x2, y2, color)
 
 
-# Picture ids (see hmi/plus4-canvas/README.md). Pictures have no alpha: each icon strip and corner sheet is
-# baked for one backdrop colour, so drawing falls back to filled discs when the colours do not match a sheet.
-ICON_NAMES = ["nozzle", "bed", "chamber", "fan", "light", "spool", "home", "control", "files", "box", "gear",
-              "play", "pause", "stop", "up", "down", "left", "right", "check", "warning"]
-ICON2_NAMES = ["mmu", "wifi", "info", "refresh", "lock"]
-ICON2_BGS = [Theme.SURFACE, Theme.SURFACE2, Theme.ACCENT]
-ICON2_PIC = {24: 22, 32: 25}  # first strip of each size; strips follow ICON2_BGS order
-ICON_BGS = [Theme.BG, Theme.SURFACE, Theme.SURFACE2, Theme.RAISED, Theme.ACCENT, Theme.ACCENT_DIM]
-ICON_PIC = {24: 0, 32: 6}  # id of the first strip of each size; strips follow ICON_BGS order
+# Picture ids (see hmi/plus4-canvas/README.md and assets/pics/pics.json, written by tools/hmi_assets.js).
+# Pictures have no alpha: each icon strip is baked for one (ink, backdrop) pair and each corner sheet for one
+# (fill, backdrop) pair; drawing falls back to the nearest strip, or to filled discs for corners.
+ICON_NAMES = ["home", "move", "temp", "fan", "spool", "files", "target", "sys", "stop", "nozzle", "bed", "chamber",
+              "drop", "light", "power", "wifi", "play", "pause", "x", "clock", "hour", "flag", "layers", "gauge", "flow",
+              "z", "plus", "minus", "reset", "cube", "check", "del", "up", "down", "left", "right", "level", "extrude",
+              "retract", "arrow", "snow", "part", "side", "exhaust", "eject", "refresh", "wrench", "bypass", "guard",
+              "back", "sort", "folder", "trash", "weight", "cal", "wave", "pid", "screw", "bolt", "info", "moon", "sun",
+              "sound", "reboot", "warn", "lock"]
+ICONS_PER_ROW = 25
+ICON_INKS = [  # (ink, backdrop) of each strip; ids 0-9 are 24 px, 10-19 the same pairs at 32 px
+    (Theme.MUTED, Theme.BG), (Theme.TEXT, Theme.BG), (Theme.ACCENT, Theme.SURFACE), (Theme.MUTED, Theme.SURFACE),
+    (Theme.TEXT, Theme.SURFACE), (Theme.OK, Theme.SURFACE), (Theme.MUTED, Theme.SURFACE2), (Theme.TEXT, Theme.SURFACE2),
+    (Theme.BG, Theme.ACCENT), (Theme.ERR_INK, Theme.ERR_DIM),
+]
+ICON_PIC = {24: 0, 32: len(ICON_INKS)}
+CORNER_PIC = 2 * len(ICON_INKS)  # one atlas of corner sheets
 CORNER_RADII = [4, 6, 8, 10, 12, 16, 20, 24]
 CORNER_Y = [0, 4, 10, 18, 28, 40, 56, 76]
-CORNER_PIC = {  # (fill, backdrop) -> picture id
-    (Theme.SURFACE, Theme.BG): 12, (Theme.SURFACE2, Theme.SURFACE): 13, (Theme.RAISED, Theme.SURFACE): 14,
-    (Theme.SURFACE2, Theme.BG): 15, (Theme.RAISED, Theme.BG): 16, (Theme.ACCENT, Theme.BG): 17,
-    (Theme.ACCENT, Theme.SURFACE): 18, (Theme.ACCENT_DIM, Theme.SURFACE): 19, (Theme.ERR_DIM, Theme.SURFACE): 20,
-    (Theme.BG, Theme.SURFACE): 21,
-}
+SHEET_W, SHEET_H, SHEETS_PER_ROW = 96, 100, 8
+T = Theme
+CORNER_PAIRS = [  # (fill, backdrop), atlas order
+    (T.SURFACE, T.BG), (T.SURFACE2, T.SURFACE), (T.SURFACE2, T.BG), (T.ACCENT, T.BG), (T.ACCENT, T.SURFACE),
+    (T.ACCENT, T.SURFACE2), (T.ERR_DIM, T.BG), (T.ERR_DIM, T.SURFACE), (T.BORDER, T.SURFACE), (T.SURFACE, T.BORDER),
+    (T.BORDER, T.BG), (T.BG, T.BORDER), (T.BG, T.SURFACE), (T.SURFACE2, T.ACCENT), (T.TEXT, T.BG), (T.TEXT, T.SURFACE),
+    (T.SURFACE2, T.TEXT), (T.ACCENT, T.TEXT), (T.ERR_DIM, T.TEXT), (T.SURFACE, T.TEXT), (T.BG, T.TEXT),
+    (T.TEXT, T.ACCENT), (T.MUTED, T.SURFACE2), (T.ACCENT, T.ERR_DIM),
+]
+CORNER_SHEET = {pair: i for i, pair in enumerate(CORNER_PAIRS)}
 
 
 def xpic(x: int, y: int, w: int, h: int, sx: int, sy: int, pic: int) -> str:
     return "xpic %d,%d,%d,%d,%d,%d,%d" % (x, y, w, h, sx, sy, pic)
 
 
-def icon(name: str, x: int, y: int, size: int, bg: int) -> str:
-    """One icon (24 or 32 px) on the strip baked for the backdrop colour nearest to `bg`."""
-    if name in ICON2_NAMES:
-        k = min(range(len(ICON2_BGS)), key=lambda i: _distance(ICON2_BGS[i], bg))
-        return xpic(x, y, size, size, ICON2_NAMES.index(name) * size, 0, ICON2_PIC[size] + k)
-    k = min(range(len(ICON_BGS)), key=lambda i: _distance(ICON_BGS[i], bg))
-    return xpic(x, y, size, size, ICON_NAMES.index(name) * size, 0, ICON_PIC[size] + k)
+def icon(name: str, x: int, y: int, size: int, bg: int, ink: int = Theme.MUTED) -> str:
+    """One icon (24 or 32 px) from the strip baked for (`ink`, `bg`), or the nearest one there is."""
+    k = min(range(len(ICON_INKS)), key=lambda i: (4 * _distance(ICON_INKS[i][1], bg) + _distance(ICON_INKS[i][0], ink)))
+    n = ICON_NAMES.index(name)
+    return xpic(x, y, size, size, (n % ICONS_PER_ROW) * size, (n // ICONS_PER_ROW) * size, ICON_PIC[size] + k)
 
 
 def _distance(a: int, b: int) -> int:
@@ -227,11 +255,14 @@ def rounded(r: Rect, color: int, radius: int = 10, bg: Optional[int] = None) -> 
         fill(Rect(r.x + r.w - radius, r.y + radius, radius, r.h - 2 * radius), color),
     ]
     x2, y2 = r.x + r.w - radius, r.y + r.h - radius
-    pic = CORNER_PIC.get((color, bg))
-    if pic is not None and radius in CORNER_RADII:
-        sy = CORNER_Y[CORNER_RADII.index(radius)]
-        return cmds + [xpic(r.x, r.y, radius, radius, 0, sy, pic), xpic(x2, r.y, radius, radius, radius, sy, pic),
-                       xpic(r.x, y2, radius, radius, 2 * radius, sy, pic), xpic(x2, y2, radius, radius, 3 * radius, sy, pic)]
+    sheet = CORNER_SHEET.get((color, bg))
+    if sheet is not None and radius in CORNER_RADII:
+        sx = (sheet % SHEETS_PER_ROW) * SHEET_W
+        sy = (sheet // SHEETS_PER_ROW) * SHEET_H + CORNER_Y[CORNER_RADII.index(radius)]
+        pic = CORNER_PIC
+        return cmds + [xpic(r.x, r.y, radius, radius, sx, sy, pic), xpic(x2, r.y, radius, radius, sx + radius, sy, pic),
+                       xpic(r.x, y2, radius, radius, sx + 2 * radius, sy, pic),
+                       xpic(x2, y2, radius, radius, sx + 3 * radius, sy, pic)]
     x2, y2 = x2 - 1, y2 - 1
     return cmds + [disc(r.x + radius, r.y + radius, radius, color), disc(x2, r.y + radius, radius, color),
                    disc(r.x + radius, y2, radius, color), disc(x2, y2, radius, color)]
@@ -278,7 +309,8 @@ def overlaps(a: Rect, b: Rect) -> bool:
 class Hit:
     key: str
     rect: Rect
-    action: Callable[[], None]
+    action: Callable[..., None]
+    wants_xy: bool = False  # the action takes the release point (sliders)
 
 
 class Canvas:
@@ -355,8 +387,8 @@ class Canvas:
         x2, y2 = max(b.x + b.w for b in boxes), max(b.y + b.h for b in boxes)
         return Rect(x1, y1, x2 - x1, y2 - y1)
 
-    def hit(self, key: str, rect: Rect, action: Callable[[], None]):
-        self.hits.append(Hit(key, rect, action))
+    def hit(self, key: str, rect: Rect, action: Callable[..., None], wants_xy: bool = False):
+        self.hits.append(Hit(key, rect, action, wants_xy))
 
     def find(self, x: int, y: int) -> Optional[Hit]:
         for h in reversed(self.hits):  # last drawn is on top

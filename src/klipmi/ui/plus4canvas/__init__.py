@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """QIDI Plus 4 UI drawn from the host (`ui = "plus4canvas"`).
 
-The screen runs QIDI's stock HMI; its empty `logo` page is used as a canvas and
-everything on it is drawn here. Needs no editor and no custom firmware.
+Runs on our own minimal HMI firmware (hmi/plus4-canvas): one blank page, fonts and pictures; everything on
+the glass is drawn here. Layout: icon rail on the left, status bar on top, pages in CONTENT.
 """
 
 import asyncio
@@ -11,17 +11,33 @@ import os
 from typing import Dict, List, Optional
 
 from klipmi.canvas.app import App, Modal
-from klipmi.canvas.gfx import FONT_L, FONT_M, FONT_S, LEFT, Rect, Theme, text
+from klipmi.canvas.gfx import FONT_SB, FONT_XS, LEFT, Rect, Theme, text
 from klipmi.canvas.link import SerialLink
 from klipmi.canvas import widgets as ui
 from klipmi.features import mmu
 from klipmi.model.ui import BaseUi
 from klipmi.utils import classproperty
 
-from .box import BoxPage
-from .pages import ControlPage, FilesPage, HomePage, OfflinePage, PrintingPage, SystemPage
+from .box import FilamentPage
+from .calibrate import CalibratePage
+from .dialogs import ManualProbe, confirm, wrapped
+from .files import FilesPage
+from .home import HomePage, PrintingPage
+from .motion import FansPage, MovePage, TempPage
+from .system import OfflinePage, SystemPage
 
-OPTIONAL = ("fan_generic sidefan", "fan_generic filterfan", "output_pin caselight", "heater_generic chamber")
+NAV = [
+    ("home", "home", lambda a: True),
+    ("move", "move", lambda a: True),
+    ("temp", "temp", lambda a: True),
+    ("fans", "fan", lambda a: True),
+    ("filament", "spool", lambda a: a.has("mmu")),
+    ("files", "files", lambda a: True),
+    ("calibrate", "target", lambda a: True),
+    ("system", "sys", lambda a: True),
+]
+PAGES = {"home": HomePage, "move": MovePage, "temp": TempPage, "fans": FansPage, "filament": FilamentPage,
+         "files": FilesPage, "calibrate": CalibratePage, "system": SystemPage}
 
 
 class Prompt(Modal):
@@ -38,11 +54,13 @@ class Prompt(Modal):
 
     def draw(self, c):
         p = self.panel
-        ui.label(c, "modal/title", Rect(p.x + 24, p.y + 16, p.w - 48, 34), self.title_text or "Printer", FONT_L)
-        for i, ln in enumerate(self.lines[:4]):
-            ui.label(c, "modal/l%d" % i, Rect(p.x + 24, p.y + 58 + i * 26, p.w - 48, 24), ln, FONT_S, Theme.MUTED)
+        c.op("modal/title", [text(Rect(p.x + 24, p.y + 14, p.w - 48, 40), self.title_text or "Printer", FONT_SB, Theme.TEXT,
+                                  Theme.SURFACE, LEFT)])
+        wrapped(c, "modal/body", Rect(p.x + 24, p.y + 60, p.w - 48, 140), " ".join(self.lines), FONT_XS, Theme.MUTED,
+                Theme.SURFACE, 5, 28)
         buttons = self.buttons[:3] or [("Close", "", "")]
-        for i, ((label, gcode, color), cell) in enumerate(zip(buttons, Rect(p.x + 24, p.y + p.h - 76, p.w - 48, 58).split_h(len(buttons), 12))):
+        for i, ((label, gcode, color), cell) in enumerate(zip(buttons, Rect(p.x + 20, p.y + p.h - 76, p.w - 40, 56)
+                                                              .split_h(len(buttons), 8))):
             style = {"error": ui.DANGER, "primary": ui.ACCENT, "info": ui.ACCENT, "warning": ui.DANGER}.get(color, ui.NORMAL)
             ui.button(c, "modal/b%d" % i, cell, label, (lambda g=gcode: self._press(g)), style=style)
 
@@ -70,8 +88,14 @@ class CanvasUI(BaseUi):
             "fan": ["speed"],
             "fan_generic sidefan": ["speed"],
             "fan_generic filterfan": ["speed"],
+            "heater_fan hotend_fan": ["speed"],
+            "heater_fan chamber_heater_fan": ["speed"],
+            "temperature_fan Mainboard_fan": ["speed"],
             "output_pin caselight": ["value"],
             "idle_timeout": ["state"],
+            "exclude_object": ["objects", "excluded_objects"],
+            "manual_probe": ["is_active", "z_position"],
+            "bed_mesh": ["profile_name", "probed_matrix", "profiles"],
         }
 
     def __init__(self, state):
@@ -97,19 +121,15 @@ class CanvasUI(BaseUi):
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.link.open)
         app = App(self.link.write, self.state.printer,
-                  settings_path=os.path.expanduser("~/printer_data/config/klipmi-canvas.json"),
-                  nav=[
-                      ("home", "Home", lambda a: True),
-                      ("control", "Control", lambda a: True),
-                      ("files", "Files", lambda a: True),
-                      ("box", "Box", lambda a: a.has("mmu")),
-                      ("system", "System", lambda a: True),
-                  ])
+                  settings_path=os.path.expanduser("~/printer_data/config/klipmi-canvas.json"), nav=NAV)
         app.available = getattr(self, "_available", [])
-        for nav_id, page in (("home", HomePage), ("control", ControlPage), ("files", FilesPage), ("box", BoxPage),
-                             ("system", SystemPage)):
+        for nav_id, page in PAGES.items():
             app.register(nav_id, page)
+        app.printing_page = PrintingPage
         app.offline_page = OfflinePage(app)
+        app.on_estop = lambda: confirm(app, "Emergency stop", "Stops all motors and heaters at once. Klipper needs a "
+                                       "firmware restart afterwards.", "Stop now",
+                                       lambda: app.spawn(app.call("printer.emergency_stop")))
         app.listeners.append(self._watch)
         app.sink("dim=%d" % app.settings["brightness"])
         self.app = app
@@ -198,6 +218,11 @@ class CanvasUI(BaseUi):
                 app.toast("Print complete", Theme.OK, 10)
             elif new == "error":
                 app.toast("Print failed: %s" % (app.get("print_stats", "message", "") or "see Mainsail"), Theme.ERR, 10)
+        probing = bool(app.get("manual_probe", "is_active", False))
+        if probing and not isinstance(app.modal, ManualProbe):
+            app.open_modal(ManualProbe(app))
+        elif not probing and isinstance(app.modal, ManualProbe):
+            app.close_modal()
 
     def _display_restarted(self):
         if self.reopening:
