@@ -25,7 +25,9 @@ from klipmi.canvas.gfx import unrgb  # noqa: E402
 
 HMI = os.path.join(os.path.dirname(__file__), "..", "hmi", "plus4-canvas")
 FONTS = {0: ("Regular", 16), 1: ("Regular", 20), 2: ("Regular", 24), 3: ("Regular", 32),
-         4: ("SemiBold", 48), 5: ("SemiBold", 96)}
+         4: ("SemiBold", 48), 5: ("SemiBold", 96),
+         6: ("Light", 16), 7: ("Light", 20), 8: ("Light", 24), 9: ("Light", 32),
+         10: ("SemiBold", 16), 11: ("SemiBold", 20), 12: ("SemiBold", 24), 13: ("SemiBold", 32)}
 PIC_FILES = ([f"ic{n}_{bg}" for n in (24, 32) for bg in ("bg", "surface", "surface2", "raised", "accent", "accent_dim")]
              + ["cr_surface_bg", "cr_surface2_surface", "cr_raised_surface", "cr_surface2_bg", "cr_raised_bg",
                 "cr_accent_bg", "cr_accent_surface", "cr_accent_dim_surface", "cr_err_dim_surface", "cr_bg_surface"])

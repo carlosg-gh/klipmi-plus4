@@ -54,7 +54,7 @@ function advances(file) {
 
 const lines = ['# SPDX-License-Identifier: GPL-3.0-or-later',
   '"""Advance widths (font units) of ASCII 32-126 in Inter, from tools/font_metrics.js. Do not edit."""', ''];
-for (const [name, file] of [["REGULAR", "Inter-Regular.ttf"], ["SEMIBOLD", "Inter-SemiBold.ttf"]]) {
+for (const [name, file] of [["REGULAR", "Inter-Regular.ttf"], ["LIGHT", "Inter-Light.ttf"], ["SEMIBOLD", "Inter-SemiBold.ttf"]]) {
   const { upm, adv } = advances(path.join(dir, file));
   lines.push(`UPM_${name} = ${upm}`);
   lines.push(`ADV_${name} = [`);

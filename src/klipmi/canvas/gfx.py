@@ -11,23 +11,37 @@ import re
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-from .metrics import ADV_REGULAR, ADV_SEMIBOLD, UPM_REGULAR, UPM_SEMIBOLD
+from .metrics import ADV_LIGHT, ADV_REGULAR, ADV_SEMIBOLD, UPM_LIGHT, UPM_REGULAR, UPM_SEMIBOLD
 
 W, H = 800, 480
 
 # Fonts and pictures of hmi/plus4-canvas/plus4-canvas.tft (ids as listed in hmi/plus4-canvas/README.md).
-FONT_S, FONT_M, FONT_L, FONT_XL, FONT_D48, FONT_D96 = 0, 1, 2, 3, 4, 5  # Inter 16/20/24/32, SemiBold digits 48/96
-FONT_PX = {FONT_S: 16, FONT_M: 20, FONT_L: 24, FONT_XL: 32, FONT_D48: 48, FONT_D96: 96}
-LINE_H = {FONT_S: 20, FONT_M: 24, FONT_L: 30, FONT_XL: 40, FONT_D48: 58, FONT_D96: 116}
+# Light text looks best on dark faces; SemiBold keeps dark ink readable on bright faces (text() swaps by itself).
+FONT_S, FONT_M, FONT_L, FONT_XL = 6, 7, 8, 9          # Inter Light 16/20/24/32
+FONT_SB, FONT_MB, FONT_LB, FONT_XLB = 10, 11, 12, 13  # Inter SemiBold 16/20/24/32
+FONT_D48, FONT_D96 = 4, 5                             # SemiBold digits 48/96
+# ids 0-3 are Inter Regular 16/20/24/32 (unused)
+FONT_PX = {0: 16, 1: 20, 2: 24, 3: 32, FONT_S: 16, FONT_M: 20, FONT_L: 24, FONT_XL: 32,
+           FONT_SB: 16, FONT_MB: 20, FONT_LB: 24, FONT_XLB: 32, FONT_D48: 48, FONT_D96: 96}
+LINE_H = {FONT_S: 20, FONT_M: 24, FONT_L: 30, FONT_XL: 40, FONT_SB: 20, FONT_MB: 24, FONT_LB: 30, FONT_XLB: 40,
+          FONT_D48: 58, FONT_D96: 116}
 DIGITS = {FONT_D48, FONT_D96}  # only "0123456789.-:%C /+"
+BOLD_OF = {FONT_S: FONT_SB, FONT_M: FONT_MB, FONT_L: FONT_LB, FONT_XL: FONT_XLB}
 
-_BOLD = {FONT_D48, FONT_D96}
+_BOLD = {FONT_D48, FONT_D96, FONT_SB, FONT_MB, FONT_LB, FONT_XLB}
+_LIGHT = {FONT_S, FONT_M, FONT_L, FONT_XL}
 
 
 def text_width(s: str, font: int) -> int:
     """Pixel width of `s` in a font (advance widths from the Inter files)."""
-    adv, upm = (ADV_SEMIBOLD, UPM_SEMIBOLD) if font in _BOLD else (ADV_REGULAR, UPM_REGULAR)
+    if font in _BOLD:
+        adv, upm = ADV_SEMIBOLD, UPM_SEMIBOLD
+    elif font in _LIGHT:
+        adv, upm = ADV_LIGHT, UPM_LIGHT
+    else:
+        adv, upm = ADV_REGULAR, UPM_REGULAR
     return int(sum(adv[ord(ch) - 32] for ch in s if 32 <= ord(ch) < 127) * FONT_PX[font] / upm + 0.99)
+
 
 LEFT, CENTER, RIGHT = 0, 1, 2
 
@@ -122,7 +136,14 @@ def fill(r: Rect, color: int) -> str:
     return "fill %d,%d,%d,%d,%d" % (r.x, r.y, r.w, r.h, color)
 
 
+def _luma(c: int) -> float:
+    r, g, b = unrgb(c)
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+
 def text(r: Rect, s: str, font: int, fg: int, bg: int, align: int = CENTER, valign: int = CENTER) -> str:
+    if font in BOLD_OF and _luma(fg) < _luma(bg):  # dark ink on a bright face: Light would wash out
+        font = BOLD_OF[font]
     return 'xstr %d,%d,%d,%d,%d,%d,%d,%d,%d,1,"%s"' % (
         r.x, r.y, r.w, r.h, font, fg, bg, align, valign, fit(s, r.w, font))
 

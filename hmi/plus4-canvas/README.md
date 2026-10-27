@@ -3,7 +3,7 @@
 Our own minimal TJC project for the Plus 4 screen (TJC8048X250_011, 800x480). One blank page `canvas`, no timers, no touch components: Python draws everything (`src/klipmi/canvas/`). Built with the TJC "USART HMI" editor 1.68.2.
 
 - `plus4-canvas.HMI`: editor project (encoding utf-8, orientation 0)
-- `plus4-canvas.tft`: compiled firmware (0.5 MB: pictures 73,659 B, fonts 30,710 B, no errors or warnings)
+- `plus4-canvas.tft`: compiled firmware (656,888 B: pictures 73,659 B, fonts 76,068 B, no errors or warnings; sha256 `62efae40...d957`)
 - `fonts/*.zi`: generated fonts (editor font tool, anti-aliasing box ticked)
 - `assets/svg/`: Material Symbols (Apache-2.0) source icons; `assets/pics/`: PNGs rendered by `tools/hmi_assets.js` (`node tools/hmi_assets.js`, needs Chrome, no packages)
 - Inter is SIL OFL: `Inter-4.0.zip` from github.com/rsms/inter/releases (not committed; installed per user, only needed to regenerate the fonts)
@@ -29,6 +29,10 @@ The screen therefore boots at 921600 baud (QIDI's firmware boots at 115200).
 | 3 | Inter Regular | 32 | ASCII |
 | 4 | Inter SemiBold | 48 | `0123456789.-:%C /+` |
 | 5 | Inter SemiBold | 96 | `0123456789.-:%C /+` |
+| 6-9 | Inter Light | 16, 20, 24, 32 | ASCII (default for light text on dark faces) |
+| 10-13 | Inter SemiBold | 16, 20, 24, 32 | ASCII (dark ink on bright faces; `gfx.text()` swaps Light for SemiBold when the ink is darker than its background) |
+
+Ids 0-3 (Inter Regular) are unused: on the glass Regular looked heavy and ragged on dark faces, Light is clean there, and only SemiBold stays readable as dark ink on the cyan accent.
 
 ## Pictures (ids)
 Pictures have no alpha, so every icon strip and corner sheet is baked against one background colour from `Theme` (`src/klipmi/canvas/gfx.py`). Pick the id that matches the surface you draw on.
