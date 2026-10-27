@@ -42,7 +42,22 @@ async def resolveObjects(available: List[str], query) -> Dict[str, Optional[List
             name = unit.get(key)
             if name and name in available:
                 objects[name] = None
+        sensor = unit.get("environment_sensor")
+        if sensor:
+            for name in humiditySources(sensor, available):
+                objects[name] = None
     return objects
+
+
+# Klipper keeps humidity on the sensor driver's own object (`aht10 box1_env`), not on `temperature_sensor`
+HUMIDITY_DRIVERS = ("aht10", "bme280", "htu21d", "sht3x")
+
+
+def humiditySources(sensor: str, available: Iterable[str]) -> List[str]:
+    """Objects that carry the humidity for a sensor like `temperature_sensor box1_env`."""
+    short = sensor.split(" ", 1)[-1]
+    wanted = {"%s %s" % (driver, short) for driver in HUMIDITY_DRIVERS}
+    return [name for name in available if name in wanted]
 
 
 def _units(machine: dict) -> List[dict]:
@@ -145,6 +160,8 @@ def parse(status: dict) -> Optional[Box]:
         box.temperature = sensor.get("temperature", heater.get("temperature"))  # air, not the heater plate
         box.target = heater.get("target")
         box.humidity = sensor.get("humidity")
+        for name in humiditySources(unit.get("environment_sensor") or "", status):
+            box.humidity = status[name].get("humidity", box.humidity)
         break  # the stock pages show one box
     return box
 

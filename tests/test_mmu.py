@@ -90,6 +90,28 @@ class ParseTest(unittest.TestCase):
         self.assertTrue(box.errored)
 
 
+class HumidityTest(unittest.TestCase):
+    def test_humidity_comes_from_the_driver_object(self):
+        status = fixture()
+        status["aht10 box1_env"] = {"temperature": 26.4, "humidity": 28}
+        self.assertEqual(mmu.parse(status).humidity, 28)
+
+    def test_resolve_subscribes_to_the_driver_object(self):
+        status = fixture()
+
+        async def query(objects):
+            return {"mmu_machine": status["mmu_machine"]}
+
+        available = ["mmu", "mmu_machine", "temperature_sensor box1_env", "aht10 box1_env", "aht10 other"]
+        got = asyncio.run(mmu.resolveObjects(available, query))
+        self.assertIn("aht10 box1_env", got)
+        self.assertNotIn("aht10 other", got)
+
+    def test_sources(self):
+        self.assertEqual(mmu.humiditySources("temperature_sensor box1_env", ["bme280 box1_env", "x"]), ["bme280 box1_env"])
+        self.assertEqual(mmu.humiditySources("", ["aht10 box1_env"]), [])
+
+
 class ColorTest(unittest.TestCase):
     def test_rgb565(self):
         self.assertEqual(mmu.rgb565("ff0000"), 0xF800)
@@ -136,7 +158,7 @@ class RenderTest(unittest.TestCase):
         self.assertIn('t17.txt="%d"' % round(box.temperature), cmds)
         self.assertIn('t18.txt="50"', cmds)
         self.assertIn('t26.txt="--"', cmds)
-        self.assertIn("t16.pic=367", cmds)
+        self.assertIn("t16.picc=367", cmds)
         self.assertFalse([c for c in cmds if c.startswith("t3.txt")])
 
     def test_external_holder_is_left_alone(self):

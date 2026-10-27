@@ -14,7 +14,25 @@ from klipmi.utils import classproperty
 NAV_HOME, NAV_CONTROL, NAV_FILES, NAV_TOOLS, NAV_SETTINGS = 33, 34, 35, 36, 37
 
 
+def commandKey(cmd: str) -> str:
+    """What a command sets: `t5.bco=1` -> `t5.bco`, `vis t5,1` -> `vis t5`."""
+    return cmd.split("=", 1)[0] if "=" in cmd else cmd.split(",", 1)[0]
+
+
 class Plus4Page(BasePage):
+    # The display takes ~100 ms per command and status updates arrive several times a
+    # second, so only commands that change something are sent (the cache lives as long as
+    # the page, which the display resets when it loads).
+    _sent: dict
+
+    async def send(self, cmd: str):
+        if not hasattr(self, "_sent"):
+            self._sent = {}
+        key = commandKey(cmd)
+        if self._sent.get(key) != cmd:
+            await self.state.display.command(cmd, self.state.options.timeout)
+            self._sent[key] = cmd
+
     @classproperty
     def pageRef(cls) -> str:
         return cls.name
@@ -62,12 +80,12 @@ class MainPage(Plus4Page):
             logging.info("main: touch id %d (unhandled)" % data.component_id)
 
     async def onPrinterStatusUpdate(self, data: dict):
-        display, timeout = self.state.display, self.state.options.timeout
         for comp, heater in (("n0", "extruder"), ("n1", "heater_bed"), ("n2", "heater_generic chamber")):
             temperature = data.get(heater, {}).get("temperature")
             if temperature is not None:
-                await display.set(comp + ".val", int(temperature), timeout)
-        await display.set("t3.txt", data.get("print_stats", {}).get("filename", ""), timeout)
+                await self.send("%s.val=%d" % (comp, int(temperature)))
+        filename = data.get("print_stats", {}).get("filename", "").replace('"', "'")
+        await self.send('t3.txt="%s"' % filename)
 
 
 class BoxPage(Plus4Page):
@@ -88,7 +106,7 @@ class BoxPage(Plus4Page):
         if self.box is None:
             return
         for cmd in mmu_plus4.render(self.box, self.selected):
-            await self.state.display.command(cmd, self.state.options.timeout)
+            await self.send(cmd)
 
     async def onPrinterStatusUpdate(self, data: dict):
         self.box = mmu.parse(data) or self.box

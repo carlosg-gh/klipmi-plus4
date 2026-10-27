@@ -14,7 +14,7 @@ FRAMES = ["p5", "p6", "p7", "p8", "p9"]  # selection frame pictures
 GATES = [mmu.BYPASS, 0, 1, 2, 3]
 
 UNKNOWN_COLOR = 16904  # the HMI's own grey for a spool without a known colour
-HEAT_ICON = {False: 366, True: 367}  # t16.pic, from the HMI's own comment
+HEAT_ICON = {False: 366, True: 367}  # t16.picc (a crop-image text control), from the HMI's own comment
 
 
 def slotCommands(label: str, slot: mmu.Slot) -> List[str]:
@@ -42,7 +42,7 @@ def render(box: mmu.Box, selected: int) -> List[str]:
     if box.target is not None:
         cmds.append('t18.txt="%d"' % round(box.target))
     cmds.append('t26.txt="%s"' % ("%d" % round(box.humidity) if box.humidity is not None else "--"))
-    cmds.append("t16.pic=%d" % HEAT_ICON[box.heating])
+    cmds.append("t16.picc=%d" % HEAT_ICON[box.heating])
 
     if box.errored and box.reason:
         cmds.append('t3.txt="%s"' % box.reason.replace('"', "'")[:60])
