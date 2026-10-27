@@ -28,6 +28,7 @@ TABLE_MOONRAKER = "moonraker"
 KEY_DEVICE = "device"
 KEY_BAUD = "baudrate"
 KEY_UI = "ui"
+KEY_MMU = "mmu"
 KEY_HOST = "host"
 KEY_PORT = "port"
 KEY_API = "api-key"
@@ -62,6 +63,7 @@ class KlipmiConfig:
     device: str = ""
     baud: int = 115200
     ui: str = ""
+    mmu: str = "auto"  # "auto" shows the MMU page only if Happy Hare is configured, "off" never
 
     def __init__(self, config: dict):
         try:
@@ -78,6 +80,11 @@ class KlipmiConfig:
             self.ui = config[KEY_UI]
         except Exception as e:
             logging.exception(e)
+
+        self.mmu = str(config.get(KEY_MMU, self.mmu)).lower()
+        if self.mmu not in ("auto", "off"):
+            logging.warning("mmu must be \"auto\" or \"off\", got %r; using auto" % self.mmu)
+            self.mmu = "auto"
 
 
 class MoonrakerConfig:

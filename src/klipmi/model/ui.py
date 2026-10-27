@@ -44,6 +44,11 @@ class BasePage(ABC):
         self.state = state
         self.changePageCallback = changePageCallback
 
+    @classproperty
+    def pageRef(cls) -> str:
+        """What follows the display's `page` command. Defaults to the page index."""
+        return str(cls.id)
+
     async def init(self):
         pass
 
@@ -96,6 +101,10 @@ class BaseUi(ABC):
     def __init__(self, state: KlipmiState):
         self.state = state
 
+    async def resolveObjects(self, available, query) -> Dict[str, List[str] | None]:
+        """Objects to subscribe to, given the ones Klipper has. Override to add optional ones."""
+        return {k: v for k, v in self.printerObjects.items() if k in available}
+
     @abstractmethod
     def onNotReady(self):
         pass
@@ -133,7 +142,7 @@ class BaseUi(ABC):
         if self.currentPage is not None:
             await self.state.display.wakeup()
             await self.state.display.command(
-                "page %d" % self.currentPage.id, self.state.options.timeout
+                "page %s" % self.currentPage.pageRef, self.state.options.timeout
             )
             await self.currentPage.init()
 

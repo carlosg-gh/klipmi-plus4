@@ -59,3 +59,6 @@ Contributions are welcome! Please open an issue or submit a pull request for any
 
 This project is licensed under the GPL-3.0 License. See the [LICENSE](LICENSE) file for details.
 
+
+## QIDI Plus 4 (`ui = "plus4"`)
+Work in progress. Drives QIDI's stock Plus 4 HMI (see `hmi/plus4/README.md`) instead of FreeDi's closed screen service, including an optional Happy Hare / Bunny-Box page (`mmu = "auto"`: only shown when Klipper has an `mmu` object). Optional hardware is subscribed only if Klipper reports it. Tests: `python -m unittest discover -s tests`. Notes: `docs/plus4-hmi.md`.

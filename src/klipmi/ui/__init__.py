@@ -19,5 +19,6 @@ klipmi. If not, see <https://www.gnu.org/licenses/>.
 from typing import Dict, Type
 from klipmi.model.ui import BaseUi
 from klipmi.ui.openq1 import OpenQ1UI
+from klipmi.ui.plus4 import Plus4UI
 
-implementations: Dict[str, Type[BaseUi]] = {"openq1": OpenQ1UI}
+implementations: Dict[str, Type[BaseUi]] = {"openq1": OpenQ1UI, "plus4": Plus4UI}

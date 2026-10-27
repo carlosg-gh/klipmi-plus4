@@ -8,3 +8,14 @@ host = "0.0.0.0"
 port = 7125
 api-key = "xxxxxxxxxxxxxxxxxxx"
 
+# QIDI Plus 4 (replaces FreeDi's screen service; stop FreeDi first):
+#
+# [klipmi]
+# device = "/dev/ttyS1"
+# baudrate = 921600
+# ui = "plus4"
+# mmu = "auto"      # "auto": MMU page only if Happy Hare is configured; "off": never
+#
+# [moonraker]
+# host = "127.0.0.1"
+# port = 7125

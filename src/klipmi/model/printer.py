@@ -62,12 +62,15 @@ class Printer(MoonrakerListener):
         printerCallback: Callable,
         filesCallback: Callable,
         objects: Dict[str, List[str]],
+        resolveObjects: Callable | None = None,
     ):
         self.stateCallback: Callable = stateCallback
         self.printerCallback: Callable = printerCallback
         self.filesCallback: Callable = filesCallback
         self.options: MoonrakerConfig = options
         self.objects = objects
+        self.resolveObjects = resolveObjects
+        self.available: List[str] = []
         self.running: bool = False
         self.status: dict = {}
         self.files: dict = {}
@@ -125,7 +128,22 @@ class Printer(MoonrakerListener):
     async def on_exception(self, exception: type | BaseException) -> None:
         """TODO"""
 
+    async def queryObjects(self, objects: Dict[str, List[str] | None]) -> dict:
+        return (await self.client.call_method("printer.objects.query", objects=objects))[
+            "status"
+        ]
+
+    async def __discoverObjects(self):
+        """Only keep objects this printer has; a UI may add optional ones."""
+        listing = await self.client.call_method("printer.objects.list")
+        self.available = listing["objects"]
+        if self.resolveObjects is not None:
+            self.objects = await self.resolveObjects(self.available, self.queryObjects)
+        else:
+            self.objects = {k: v for k, v in self.objects.items() if k in self.available}
+
     async def __subscribe(self):
+        await self.__discoverObjects()
         await self.client.call_method("printer.objects.subscribe", objects=self.objects)
 
     async def __updateKlippyStatus(self):

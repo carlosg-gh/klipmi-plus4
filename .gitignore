@@ -157,3 +157,5 @@ cython_debug/
 
 # Documentation snippets
 writings.md
+*.HMI
+*.tft

@@ -52,6 +52,7 @@ class Klipmi:
             self.ui.onPrinterStatusUpdate,
             self.ui.onFileListUpdate,
             self.ui.printerObjects,
+            self.ui.resolveObjects,
         )
 
     async def onDisplayEvent(self, type: EventType, data):
