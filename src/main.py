@@ -18,6 +18,7 @@ klipmi. If not, see <https://www.gnu.org/licenses/>.
 
 import asyncio
 import logging
+import os
 
 from nextion import TJC, EventType
 from setproctitle import setproctitle
@@ -33,7 +34,7 @@ class Klipmi:
     def __init__(self):
         logging.basicConfig(
             format="%(asctime)s - %(levelname)s - %(message)s",
-            level=logging.DEBUG,
+            level=os.environ.get("KLIPMI_LOG", "INFO").upper(),
             handlers=[logging.StreamHandler()],
         )
 
