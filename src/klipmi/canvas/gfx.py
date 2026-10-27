@@ -7,6 +7,7 @@ whose key starts with "<parent>/" is redrawn whenever its parent is, so draw
 parents (cards) before their children (text on the card).
 """
 
+import re
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -126,9 +127,10 @@ def rounded(r: Rect, color: int, radius: int = 10) -> List[str]:
     if radius < 2:
         return [fill(r, color)]
     x2, y2 = r.x + r.w - radius - 1, r.y + r.h - radius - 1
-    return [
+    return [  # three fills that do not overlap (the display pays per pixel) and four corners
         fill(Rect(r.x + radius, r.y, r.w - 2 * radius, r.h), color),
-        fill(Rect(r.x, r.y + radius, r.w, r.h - 2 * radius), color),
+        fill(Rect(r.x, r.y + radius, radius, r.h - 2 * radius), color),
+        fill(Rect(r.x + r.w - radius, r.y + radius, radius, r.h - 2 * radius), color),
         disc(r.x + radius, r.y + radius, radius, color),
         disc(x2, r.y + radius, radius, color),
         disc(r.x + radius, y2, radius, color),
@@ -189,6 +191,32 @@ def big_width(s: str, size: int, gap: int) -> int:
 
 # --- Retained canvas -------------------------------------------------------
 
+_NUMS = re.compile(r"-?\d+")
+
+
+def bbox(cmds: Sequence[str]) -> Optional[Rect]:
+    """Area a list of drawing commands touches."""
+    x1 = y1 = 10 ** 6
+    x2 = y2 = -1
+    for cmd in cmds:
+        verb = cmd.split(" ", 1)[0]
+        n = [int(v) for v in _NUMS.findall(cmd.split('"', 1)[0][len(verb):])]
+        if verb in ("fill", "xstr") and len(n) >= 4:
+            box = (n[0], n[1], n[0] + n[2], n[1] + n[3])
+        elif verb == "cirs" and len(n) >= 3:
+            box = (n[0] - n[2], n[1] - n[2], n[0] + n[2] + 1, n[1] + n[2] + 1)
+        elif verb == "line" and len(n) >= 4:
+            box = (min(n[0], n[2]), min(n[1], n[3]), max(n[0], n[2]) + 1, max(n[1], n[3]) + 1)
+        else:
+            continue
+        x1, y1, x2, y2 = min(x1, box[0]), min(y1, box[1]), max(x2, box[2]), max(y2, box[3])
+    return Rect(x1, y1, x2 - x1, y2 - y1) if x2 >= 0 else None
+
+
+def overlaps(a: Rect, b: Rect) -> bool:
+    return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
+
+
 @dataclass
 class Hit:
     key: str
@@ -201,6 +229,7 @@ class Canvas:
         self.sink = sink
         self.shown: Dict[str, Tuple[str, ...]] = {}
         self.erase: Dict[str, Tuple[str, ...]] = {}
+        self.boxes: Dict[str, Optional[Rect]] = {}
         self.seen: set = set()
         self.hits: List[Hit] = []
         self.pressed: Optional[str] = None
@@ -215,6 +244,7 @@ class Canvas:
         """Forget the glass and paint it one colour: the next frame redraws everything."""
         self.shown.clear()
         self.erase.clear()
+        self.boxes.clear()
         self.send(fill(Rect(0, 0, W, H), color))
 
     def begin(self):
@@ -232,6 +262,7 @@ class Canvas:
             return
         self.queue.extend(cmds)  # sent in end(), after erasing what disappeared
         self.shown[key] = cmds
+        self.boxes[key] = bbox(cmds)
         prefix = key + "/"
         for child in [k for k in self.shown if k.startswith(prefix)]:
             del self.shown[child]
@@ -241,10 +272,31 @@ class Canvas:
         for key in [k for k in self.shown if k not in self.seen]:
             for cmd in self.erase.pop(key, ()):
                 self.send(cmd)
-            del self.shown[key]
+            self.forget(key)
         for cmd in self.queue:
             self.send(cmd)
         self.queue = []
+
+    def forget(self, key: str):
+        self.shown.pop(key, None)
+        self.erase.pop(key, None)
+        self.boxes.pop(key, None)
+
+    def clear_region(self, r: Rect, color: int = Theme.BG, drop: Callable[[str], bool] = lambda k: False):
+        """Paint `r` and forget every part drawn there (and parts `drop` names), so they draw again."""
+        self.send(fill(r, color))
+        for key in list(self.shown):
+            box = self.boxes.get(key)
+            if drop(key) or box is None or overlaps(box, r):
+                self.forget(key)
+
+    def region_of(self, prefix: str) -> Optional[Rect]:
+        boxes = [b for k, b in self.boxes.items() if k.startswith(prefix) and b is not None]
+        if not boxes:
+            return None
+        x1, y1 = min(b.x for b in boxes), min(b.y for b in boxes)
+        x2, y2 = max(b.x + b.w for b in boxes), max(b.y + b.h for b in boxes)
+        return Rect(x1, y1, x2 - x1, y2 - y1)
 
     def hit(self, key: str, rect: Rect, action: Callable[[], None]):
         self.hits.append(Hit(key, rect, action))

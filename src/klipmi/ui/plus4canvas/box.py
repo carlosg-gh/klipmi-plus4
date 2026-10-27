@@ -77,13 +77,13 @@ class BoxPage(Page):
         selected = self.selected == slot.index
         ring = Theme.ACCENT if selected else Theme.BG
         face = mix(Theme.SURFACE, Theme.TEXT, 0.06) if c.pressed == key else Theme.SURFACE
-        c.op(key, rounded(r, ring, 16) + rounded(r.inset(3), face, 14))
+        c.op(key, rounded(r, ring, 10) + rounded(r.inset(3), face, 8))
         known = slot.available and slot.color
         swatch_color = mmu.rgb565(slot.color) if known else (Theme.SURFACE2 if slot.status != mmu.GATE_EMPTY else Theme.BG)
         sw = Rect(r.x + 14, r.y + 14, r.w - 28, 92)
-        swatch = rounded(sw, swatch_color, 12)
+        swatch = rounded(sw, swatch_color, 6)
         if slot.status == mmu.GATE_EMPTY:
-            swatch = rounded(sw, Theme.RAISED, 12) + rounded(sw.inset(3), Theme.BG, 10)
+            swatch = rounded(sw, Theme.RAISED, 6) + rounded(sw.inset(3), Theme.BG, 4)
         label = slot.material or ("?" if slot.status == mmu.GATE_UNKNOWN else ("" if slot.status == mmu.GATE_EMPTY else "--"))
         c.op(key + "/sw", swatch + [text(sw.inset(8), label, FONT_L, ink_for(swatch_color), swatch_color if slot.status != mmu.GATE_EMPTY else Theme.BG, CENTER)])
         status, color = STATUS.get(slot.status, ("?", Theme.MUTED))
@@ -184,10 +184,10 @@ class BoxPage(Page):
         ui.button(c, "box/act/eject", top[2], "Eject", (lambda: run(mmu.EJECT)) if idle and gate >= 0 else None, sub=name)
         ui.button(c, "box/act/check", bottom[0], "Check", (lambda: confirm(
             app, "Check gates", "Happy Hare checks every gate for filament. It may move each filament a short way.",
-            "Check gates", lambda: app.gcode("MMU_CHECK_GATE ALL=1"), danger=False)) if idle else None, sub="all gates")
+            "Check gates", lambda: app.gcode("MMU_CHECK_GATE ALL=1"), danger=False)) if idle else None)
         ui.button(c, "box/act/preload", bottom[1], "Preload", (lambda: app.gcode("MMU_PRELOAD GATE=%d" % gate)) if idle and gate >= 0 else None,
                   sub=name)
-        ui.button(c, "box/act/more", bottom[2], "More", lambda: self.more(box), style=ui.GHOST, sub="recover, enable")
+        ui.button(c, "box/act/more", bottom[2], "More", lambda: self.more(box), style=ui.GHOST)
 
     def more(self, box: mmu.Box):
         app = self.app
@@ -222,7 +222,7 @@ class SlotEditor(Modal):
             color = mmu.rgb565(hexcolor)
             key = "modal/c%d" % i
             ring = Theme.ACCENT if hexcolor == self.color else Theme.SURFACE
-            c.op(key, rounded(cell, ring, 12) + rounded(cell.inset(4), color, 10) +
+            c.op(key, rounded(cell, ring, 8) + rounded(cell.inset(4), color, 5) +
                  [text(cell.inset(8), name, FONT_S, ink_for(color), color, CENTER)])
             c.hit(key, cell, lambda h=hexcolor: self._color(h))
         row = Rect(p.x + 20, p.y + p.h - 76, p.w - 40, 58).split_h(3, 12)

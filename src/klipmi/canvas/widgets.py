@@ -21,7 +21,7 @@ _STYLE = {
 }
 
 
-def card(c: Canvas, key: str, r: Rect, color: int = Theme.SURFACE, bg: int = Theme.BG, radius: int = 14,
+def card(c: Canvas, key: str, r: Rect, color: int = Theme.SURFACE, bg: int = Theme.BG, radius: int = 8,
          erase: bool = False):
     c.op(key, rounded(r, color, radius), [fill(r, bg)] if erase else ())
 
@@ -32,7 +32,7 @@ def label(c: Canvas, key: str, r: Rect, s: str, font: int = FONT_M, fg: int = Th
 
 
 def button(c: Canvas, key: str, r: Rect, caption: str, action: Optional[Callable[[], None]],
-           style: str = NORMAL, bg: int = Theme.SURFACE, font: int = FONT_M, radius: int = 10,
+           style: str = NORMAL, bg: int = Theme.SURFACE, font: int = FONT_M, radius: int = 6,
            active: bool = False, sub: str = ""):
     """A rounded button. `active` draws it selected (accent); disabled when `action` is None."""
     face, ink = _STYLE[ACCENT if active and style == NORMAL else style]

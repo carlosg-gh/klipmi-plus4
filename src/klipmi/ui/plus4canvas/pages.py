@@ -156,9 +156,9 @@ class HomePage(Page):
             c.op(k + "/heat", [text(inner.row(76, 24), ("Heating: " + ", ".join(temps)) if temps else "All heaters off",
                                         FONT_S, Theme.WARN if temps else Theme.FAINT, Theme.SURFACE, LEFT)])
             row = Rect(inner.x, inner.y + inner.h - 60, inner.w, 60).split_h(3, 12)
-            ui.button(c, k + "/files", row[0], "Print", lambda: app.go_nav("files"), style=ui.ACCENT, sub="choose a file")
-            ui.button(c, k + "/pre", row[1], "Preheat", lambda: preheat(app), sub="PLA, PETG, ABS")
-            ui.button(c, k + "/cool", row[2], "Cool down", lambda: cool_down(app), sub="heaters off")
+            ui.button(c, k + "/files", row[0], "Print", lambda: app.go_nav("files"), style=ui.ACCENT)
+            ui.button(c, k + "/pre", row[1], "Preheat", lambda: preheat(app))
+            ui.button(c, k + "/cool", row[2], "Cool down", lambda: cool_down(app))
 
     def quick(self, c, r: Rect):
         app = self.app
@@ -173,15 +173,15 @@ class HomePage(Page):
             c.op("home/q/light/na", [text(Rect(cells[0].x + 16, cells[0].y + 56, 90, 30), "n/a", FONT_S, Theme.FAINT, Theme.SURFACE, LEFT)])
         fan = app.get("fan", "speed", 0.0) or 0.0
         ui.button(c, "home/q/fans", cells[1], "Fans", lambda: app.go(ControlPage.tab(app, 2)), style=ui.NORMAL,
-                  sub="part %d%%" % round(fan * 100), radius=14)
+                  sub="part %d%%" % round(fan * 100))
         if app.has("mmu"):
             from .box import mmu_summary
-            ui.button(c, "home/q/box", cells[2], "Box", lambda: app.go_nav("box"), sub=mmu_summary(app), radius=14)
+            ui.button(c, "home/q/box", cells[2], "Box", lambda: app.go_nav("box"), sub=mmu_summary(app))
         else:
-            ui.button(c, "home/q/box", cells[2], "Motors", lambda: app.gcode("M84"), sub="turn off", radius=14)
+            ui.button(c, "home/q/box", cells[2], "Motors", lambda: app.gcode("M84"), sub="turn off")
         ui.button(c, "home/q/stop", cells[3], "STOP", lambda: confirm(
             app, "Emergency stop", "Stops all motors and heaters at once. Klipper needs a firmware restart afterwards.",
-            "Stop now", lambda: app.spawn(app.call("printer.emergency_stop"))), style=ui.DANGER, sub="emergency", radius=14)
+            "Stop now", lambda: app.spawn(app.call("printer.emergency_stop"))), style=ui.DANGER)
 
 
 # --- Printing ----------------------------------------------------------------------
@@ -239,11 +239,10 @@ class PrintingPage(Page):
             c.op("pr/card/v%d" % i, [text(cell.row(20, 24), v, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
         row = Rect(32, 300, 736, 80).split_h(4, 14)
         if state == "paused":
-            ui.button(c, "pr/pr", row[0], "Resume", lambda: app.gcode("RESUME"), style=ui.ACCENT, sub="continue")
+            ui.button(c, "pr/pr", row[0], "Resume", lambda: app.gcode("RESUME"), style=ui.ACCENT)
         else:
-            ui.button(c, "pr/pr", row[0], "Pause", (lambda: app.gcode("PAUSE")) if state == "printing" else None,
-                      sub="park the head")
-        ui.button(c, "pr/tune", row[1], "Tune", lambda: app.open_modal(Tune(app)), sub="speed, flow, Z")
+            ui.button(c, "pr/pr", row[0], "Pause", (lambda: app.gcode("PAUSE")) if state == "printing" else None)
+        ui.button(c, "pr/tune", row[1], "Tune", lambda: app.open_modal(Tune(app)))
         light = app.get("output_pin caselight", "value", None)
         ui.button(c, "pr/light", row[2], "Light", (lambda: app.gcode("SET_PIN PIN=caselight VALUE=%d" % (0 if light else 1)))
                   if light is not None else None, sub="on" if light else "off", active=bool(light))
@@ -251,8 +250,7 @@ class PrintingPage(Page):
             confirm(app, "Cancel print", "Stop this print? It cannot be resumed.", "Cancel print",
                     lambda: app.gcode("CANCEL_PRINT"))
 
-        ui.button(c, "pr/cancel", row[3], "Cancel", cancel if app.printing else None, style=ui.DANGER,
-                  sub="stop the print")
+        ui.button(c, "pr/cancel", row[3], "Cancel", cancel if app.printing else None, style=ui.DANGER)
 
 
 class Tune(Modal):
@@ -301,7 +299,7 @@ class ControlPage(Page):
 
     def _select(self, i: int):
         self.current = i
-        self.app.repaint = True
+        self.app.clear_content = True
         self.app.invalidate()
 
     def draw(self, c):
@@ -478,7 +476,7 @@ class FilesPage(Page):
             f = self.files[index]
             pressed = c.pressed == key
             face = Theme.SURFACE2 if pressed else Theme.SURFACE
-            ui.card(c, key, r, face, radius=12)
+            ui.card(c, key, r, face, radius=6)
             path = f.get("path", "")
             name = path.rsplit("/", 1)[-1]
             if name.lower().endswith(".gcode"):
@@ -595,12 +593,12 @@ class SystemPage(Page):
                      self._sleep)
         actions = Rect(404, 224, 384, 176)
         grid = [r.split_h(2, 10) for r in actions.split_v(3, 10)]
-        ui.button(c, "sys/restart", grid[0][0], "Restart", lambda: app.gcode("RESTART"), sub="reload config")
-        ui.button(c, "sys/fw", grid[0][1], "FW restart", lambda: app.spawn(app.call("printer.firmware_restart")), sub="all MCUs")
-        ui.button(c, "sys/motors", grid[1][0], "Motors off", lambda: app.gcode("M84"), sub="release steppers")
+        ui.button(c, "sys/restart", grid[0][0], "Restart", lambda: app.gcode("RESTART"))
+        ui.button(c, "sys/fw", grid[0][1], "FW restart", lambda: app.spawn(app.call("printer.firmware_restart")))
+        ui.button(c, "sys/motors", grid[1][0], "Motors off", lambda: app.gcode("M84"))
         ui.button(c, "sys/reboot", grid[1][1], "Reboot", lambda: confirm(
             app, "Reboot printer", "Restarts the printer's computer. Printing is not possible until it is back.",
-            "Reboot", lambda: app.spawn(app.call("machine.reboot"))), sub="host computer")
+            "Reboot", lambda: app.spawn(app.call("machine.reboot"))))
         ui.button(c, "sys/estop", grid[2][0], "E-stop", lambda: confirm(
             app, "Emergency stop", "Stops all motors and heaters at once.", "Stop now",
             lambda: app.spawn(app.call("printer.emergency_stop"))), style=ui.DANGER)

@@ -100,6 +100,8 @@ class App:
         self.toast_text, self.toast_color, self.toast_until = "", Theme.ACCENT, 0.0
         self.dirty = asyncio.Event() if _loop_running() else None
         self.repaint = True
+        self.clear_content = False
+        self.close_area: Optional[Rect] = None
         self.last_touch = time.time()
         self.sleeping = False
         self.swallow = False
@@ -119,7 +121,7 @@ class App:
         self.page = page
         self.canvas.pressed = None
         page.enter()
-        self.repaint = True
+        self.clear_content = True
         self.invalidate()
 
     def go_nav(self, nav_id: str):
@@ -139,7 +141,7 @@ class App:
             if self.modal is not None:
                 self.modal.leave()
             self.modal = None
-            self.repaint = True
+            self.close_area = self.canvas.region_of("modal")
             self.invalidate()
 
     def toast(self, message: str, color: int = Theme.ACCENT, seconds: float = 5.0):
@@ -250,7 +252,16 @@ class App:
         c = self.canvas
         if self.repaint:
             c.reset(Theme.BG)
-            self.repaint = False
+            self.repaint = self.clear_content = False
+            self.close_area = None
+        if self.close_area is not None and self.modal is None:
+            c.clear_region(self.close_area, Theme.BG, drop=lambda k: k.startswith("modal"))
+            self.close_area = None
+        if self.clear_content and self.modal is None:
+            # New page: keep the status and navigation bars, repaint only the page area
+            c.clear_region(Rect(0, TOP.h, 800, NAV.y - TOP.h), Theme.BG,
+                           drop=lambda k: not (k.startswith("top") or k.startswith("nav")))
+            self.clear_content = False
         c.begin()
         self.frames += 1
         if self.modal is not None:
@@ -292,12 +303,12 @@ class App:
         cells = Rect(8, NAV.y + 8, 784, NAV.h - 16).split_h(len(items), 8)
         for (nav_id, caption), cell in zip(items, cells):
             ui.button(c, "nav/" + nav_id, cell, caption, (lambda n=nav_id: self.go_nav(n)),
-                      style=ui.ACCENT if page.nav == nav_id else ui.GHOST, bg=Theme.BG, radius=16)
+                      style=ui.ACCENT if page.nav == nav_id else ui.GHOST, bg=Theme.BG, radius=8)
 
     def _draw_modal(self, c: Canvas):
         m = self.modal
         p = m.panel
-        c.op("modal", rounded(Rect(p.x - 3, p.y - 3, p.w + 6, p.h + 6), Theme.RAISED, 18) + rounded(p, Theme.SURFACE, 16))
+        c.op("modal", rounded(Rect(p.x - 2, p.y - 2, p.w + 4, p.h + 4), Theme.RAISED, 10) + rounded(p, Theme.SURFACE, 8))
         m.draw(c)
 
 

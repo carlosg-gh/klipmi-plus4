@@ -9,6 +9,7 @@ shows its own page again, so the canvas must be set up anew).
 
 import asyncio
 import logging
+import queue
 import struct
 import threading
 import time
@@ -19,6 +20,8 @@ import serial
 END = b"\xff\xff\xff"
 TOUCH_XY = 0x67
 STARTUP = 0x88  # sent by the stock HMI's Program.s at power-up
+SENDME = 0x66  # answer to `sendme` (current page), used as a flow-control marker
+WINDOW = 900  # bytes in flight before waiting for the display to catch up
 
 FAILURES = {
     0x00: "invalid instruction", 0x02: "invalid component", 0x03: "invalid page", 0x04: "invalid picture",
@@ -43,6 +46,8 @@ class SerialLink:
         self.model = ""
         self.running = False
         self.errors = 0
+        self.outbox: "queue.Queue[bytes]" = queue.Queue()
+        self.synced = threading.Event()
 
     # --- setup (blocking; run in an executor) ---------------------------------
 
@@ -101,15 +106,47 @@ class SerialLink:
     # --- runtime ---------------------------------------------------------------
 
     def write(self, cmd: str):
-        try:
-            self.port.write(cmd.encode("ascii", "replace") + END)
-        except serial.SerialException as e:
-            logging.error("display write failed: %s", e)
+        """Queue a command; the writer thread paces them so the display's buffer never overflows."""
+        self.outbox.put(cmd.encode("ascii", "replace") + END)
 
     def start(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
         self.running = True
         threading.Thread(target=self._reader, name="canvas-reader", daemon=True).start()
+        threading.Thread(target=self._writer, name="canvas-writer", daemon=True).start()
+
+    def _writer(self):
+        in_flight = 0
+        while self.running:
+            data = self.outbox.get()
+            batch = [data]
+            while len(batch) < 64:  # coalesce what is already queued into one write
+                try:
+                    batch.append(self.outbox.get_nowait())
+                except queue.Empty:
+                    break
+            for item in batch:
+                if in_flight + len(item) > WINDOW:
+                    self._sync()
+                    in_flight = 0
+                try:
+                    self.port.write(item)
+                except serial.SerialException as e:
+                    logging.error("display write failed: %s", e)
+                in_flight += len(item)
+            if self.outbox.empty() and in_flight:
+                self._sync()
+                in_flight = 0
+
+    def _sync(self):
+        """Wait until the display has executed everything sent so far."""
+        self.synced.clear()
+        try:
+            self.port.write(b"sendme" + END)
+        except serial.SerialException:
+            return
+        if not self.synced.wait(0.5):
+            logging.debug("display sync timed out")
 
     def _reader(self):
         while self.running:
@@ -125,7 +162,9 @@ class SerialLink:
 
     def _dispatch(self, frame: bytes):
         kind = frame[0]
-        if kind == TOUCH_XY and len(frame) == 6:
+        if kind == SENDME:
+            self.synced.set()
+        elif kind == TOUCH_XY and len(frame) == 6:
             x, y, ev = struct.unpack(">HHB", frame[1:])
             self.loop.call_soon_threadsafe(self.on_touch, x, y, bool(ev))
         elif kind == STARTUP or frame.endswith(b"\x88") or frame.startswith(b"\x00\x00\x00"):
