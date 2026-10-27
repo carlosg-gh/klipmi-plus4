@@ -26,6 +26,9 @@ const ICONS = {
   gear: "settings", play: "play_arrow", pause: "pause", stop: "stop", up: "arrow_upward",
   down: "arrow_downward", left: "arrow_back", right: "arrow_forward", check: "check", warning: "warning",
 };
+// second strip set (added after the first firmware): drawn in only three backdrops, appended as pictures 22-27
+const ICONS2 = { mmu: "mmu", wifi: "wifi", info: "info", refresh: "refresh", lock: "lock" };
+const ICON2_BGS = ["surface", "surface2", "accent"];
 const ICON_SIZES = [24, 32];
 const ICON_BGS = ["bg", "surface", "surface2", "raised", "accent", "accent_dim"];
 const RADII = [4, 6, 8, 10, 12, 16, 20, 24];
@@ -40,7 +43,13 @@ const icons = Object.entries(ICONS).map(([name, file]) => {
   return { name, data: "data:image/svg+xml;base64," + Buffer.from(svg).toString("base64") };
 });
 
-const job = { THEME, icons, ICON_SIZES, ICON_BGS, RADII, CORNER_PAIRS };
+const icons2 = Object.entries(ICONS2).map(([name, file]) => {
+  let svg = fs.readFileSync(path.join(root, "svg", file + ".svg"), "utf8");
+  svg = svg.replace("<svg ", '<svg fill="#ffffff" ');
+  return { name, data: "data:image/svg+xml;base64," + Buffer.from(svg).toString("base64") };
+});
+
+const job = { THEME, icons, icons2, ICON2_BGS, ICON_SIZES, ICON_BGS, RADII, CORNER_PAIRS };
 const html = `<!doctype html><meta charset=utf-8><pre id=out>pending</pre><script>
 const J = ${JSON.stringify(job)};
 const css = c => "rgb(" + c.join(",") + ")";
@@ -54,6 +63,14 @@ const load = src => new Promise((ok, no) => { const i = new Image(); i.onload = 
     x.imageSmoothingQuality = "high";
     imgs.forEach((im, k) => x.drawImage(im, k * s, 0, s, s));
     out["ic" + s + "_" + bg] = c.toDataURL("image/png").split(",")[1];
+  }
+  const imgs2 = await Promise.all(J.icons2.map(i => load(i.data)));
+  for (const s of J.ICON_SIZES) for (const bg of J.ICON2_BGS) {
+    const c = document.createElement("canvas"); c.width = s * imgs2.length; c.height = s;
+    const x = c.getContext("2d"); x.fillStyle = css(J.THEME[bg]); x.fillRect(0, 0, c.width, c.height);
+    x.imageSmoothingQuality = "high";
+    imgs2.forEach((im, k) => x.drawImage(im, k * s, 0, s, s));
+    out["ic2_" + s + "_" + bg] = c.toDataURL("image/png").split(",")[1];
   }
   const H = J.RADII.reduce((a, b) => a + b, 0), W = 4 * Math.max(...J.RADII);
   for (const [f, b] of J.CORNER_PAIRS) {
@@ -90,7 +107,7 @@ if (!m || m[1].startsWith("ERROR") || m[1] === "pending") {
   process.exit(1);
 }
 const pics = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&"));
-const manifest = { icons: Object.keys(ICONS), icon_sizes: ICON_SIZES, icon_bgs: ICON_BGS, radii: RADII, corner_pairs: CORNER_PAIRS, files: {} };
+const manifest = { icons: Object.keys(ICONS), icons2: Object.keys(ICONS2), icon2_bgs: ICON2_BGS, icon_sizes: ICON_SIZES, icon_bgs: ICON_BGS, radii: RADII, corner_pairs: CORNER_PAIRS, files: {} };
 for (const [name, b64] of Object.entries(pics)) {
   const buf = Buffer.from(b64, "base64");
   fs.writeFileSync(path.join(outDir, name + ".png"), buf);

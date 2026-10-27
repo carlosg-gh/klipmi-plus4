@@ -171,6 +171,10 @@ def disc(x: int, y: int, radius: int, color: int) -> str:
     return "cirs %d,%d,%d,%d" % (x, y, radius, color)
 
 
+def ring(x: int, y: int, radius: int, color: int) -> str:
+    return "cir %d,%d,%d,%d" % (x, y, radius, color)
+
+
 def line(x1: int, y1: int, x2: int, y2: int, color: int) -> str:
     return "line %d,%d,%d,%d,%d" % (x1, y1, x2, y2, color)
 
@@ -179,6 +183,9 @@ def line(x1: int, y1: int, x2: int, y2: int, color: int) -> str:
 # baked for one backdrop colour, so drawing falls back to filled discs when the colours do not match a sheet.
 ICON_NAMES = ["nozzle", "bed", "chamber", "fan", "light", "spool", "home", "control", "files", "box", "gear",
               "play", "pause", "stop", "up", "down", "left", "right", "check", "warning"]
+ICON2_NAMES = ["mmu", "wifi", "info", "refresh", "lock"]
+ICON2_BGS = [Theme.SURFACE, Theme.SURFACE2, Theme.ACCENT]
+ICON2_PIC = {24: 22, 32: 25}  # first strip of each size; strips follow ICON2_BGS order
 ICON_BGS = [Theme.BG, Theme.SURFACE, Theme.SURFACE2, Theme.RAISED, Theme.ACCENT, Theme.ACCENT_DIM]
 ICON_PIC = {24: 0, 32: 6}  # id of the first strip of each size; strips follow ICON_BGS order
 CORNER_RADII = [4, 6, 8, 10, 12, 16, 20, 24]
@@ -197,6 +204,9 @@ def xpic(x: int, y: int, w: int, h: int, sx: int, sy: int, pic: int) -> str:
 
 def icon(name: str, x: int, y: int, size: int, bg: int) -> str:
     """One icon (24 or 32 px) on the strip baked for the backdrop colour nearest to `bg`."""
+    if name in ICON2_NAMES:
+        k = min(range(len(ICON2_BGS)), key=lambda i: _distance(ICON2_BGS[i], bg))
+        return xpic(x, y, size, size, ICON2_NAMES.index(name) * size, 0, ICON2_PIC[size] + k)
     k = min(range(len(ICON_BGS)), key=lambda i: _distance(ICON_BGS[i], bg))
     return xpic(x, y, size, size, ICON_NAMES.index(name) * size, 0, ICON_PIC[size] + k)
 
@@ -250,7 +260,7 @@ def bbox(cmds: Sequence[str]) -> Optional[Rect]:
         n = [int(v) for v in _NUMS.findall(cmd.split('"', 1)[0][len(verb):])]
         if verb in ("fill", "xstr", "xpic") and len(n) >= 4:
             box = (n[0], n[1], n[0] + n[2], n[1] + n[3])
-        elif verb == "cirs" and len(n) >= 3:
+        elif verb in ("cirs", "cir") and len(n) >= 3:
             box = (n[0] - n[2], n[1] - n[2], n[0] + n[2] + 1, n[1] + n[2] + 1)
         elif verb == "line" and len(n) >= 4:
             box = (min(n[0], n[2]), min(n[1], n[3]), max(n[0], n[2]) + 1, max(n[1], n[3]) + 1)

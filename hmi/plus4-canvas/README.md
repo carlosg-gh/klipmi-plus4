@@ -3,7 +3,7 @@
 Our own minimal TJC project for the Plus 4 screen (TJC8048X250_011, 800x480). One blank page `canvas`, no timers, no touch components: Python draws everything (`src/klipmi/canvas/`). Built with the TJC "USART HMI" editor 1.68.2.
 
 - `plus4-canvas.HMI`: editor project (encoding utf-8, orientation 0)
-- `plus4-canvas.tft`: compiled firmware (656,888 B: pictures 73,659 B, fonts 76,068 B, no errors or warnings; sha256 `62efae40...d957`)
+- `plus4-canvas.tft`: compiled firmware (656,888 B: pictures 82,157 B, fonts 76,068 B, no errors or warnings; 28 pictures; sha256 `f3669c15...3f2e`)
 - `fonts/*.zi`: generated fonts (editor font tool, anti-aliasing box ticked)
 - `assets/svg/`: Material Symbols (Apache-2.0) source icons; `assets/pics/`: PNGs rendered by `tools/hmi_assets.js` (`node tools/hmi_assets.js`, needs Chrome, no packages)
 - Inter is SIL OFL: `Inter-4.0.zip` from github.com/rsms/inter/releases (not committed; installed per user, only needed to regenerate the fonts)
@@ -63,6 +63,14 @@ Corner sheets, 96x100 px (fill colour over backdrop colour). Radii 4, 6, 8, 10, 
 | 19 | ACCENT_DIM | SURFACE |
 | 20 | ERR_DIM | SURFACE |
 | 21 | BG | SURFACE |
+
+Second icon strip set (appended later, pictures 22-27; `ICON2_*` in `gfx.py`), cell order `mmu wifi info refresh lock`, drawn in three backdrops only:
+
+| ids 22-24 (24 px) | ids 25-27 (32 px) | background |
+|---|---|---|
+| 22 | 25 | SURFACE |
+| 23 | 26 | SURFACE2 |
+| 24 | 27 | ACCENT |
 
 Adding or reordering pictures renumbers the ids: keep this table, `assets/pics/pics.json` and the canvas code in step.
 

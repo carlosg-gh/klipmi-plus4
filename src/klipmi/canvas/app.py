@@ -22,7 +22,7 @@ SIDE = Rect(0, 0, 80, 480)  # permanent icon sidebar
 TOP = Rect(88, 0, 712, 52)
 CONTENT = Rect(88, 56, 704, 416)
 AREA = Rect(80, 52, 720, 428)  # everything a page may repaint
-NAV_ICONS = {"home": "home", "control": "control", "files": "files", "box": "box", "system": "gear"}
+NAV_ICONS = {"home": "home", "control": "control", "files": "files", "box": "mmu", "system": "gear"}
 
 
 class Page:

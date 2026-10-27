@@ -3,7 +3,7 @@
 
 from klipmi.canvas import widgets as ui
 from klipmi.canvas.app import CONTENT, App, Modal, Page
-from klipmi.canvas.gfx import (CENTER, FONT_M, FONT_S, LEFT, RIGHT, Rect, Theme, fill, mix, rounded, text,
+from klipmi.canvas.gfx import (CENTER, FONT_M, FONT_S, LEFT, RIGHT, Rect, Theme, disc, fill, mix, rounded, text,
                                unrgb)
 from klipmi.features import mmu
 
@@ -110,9 +110,9 @@ class BoxPage(Page):
         ui.card(c, "box/clim", r)
         c.op("box/clim/l", [text(Rect(r.x + 14, r.y + 4, r.w - 28, 28), "CLIMATE", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
         temp = box.temperature if box.temperature is not None else 0
-        ui.big_text(c, "box/clim/t", r.x + 14, r.y + 32, "%d C" % round(temp), 52, Theme.TEXT, Theme.SURFACE)
+        ui.temp_big(c, "box/clim/t", r.x + 14, r.y + 32, temp, 52, Theme.TEXT, Theme.SURFACE)
         target = box.target or 0
-        c.op("box/clim/tg", [text(Rect(r.x + 14, r.y + 86, r.w - 28, 26), ("to %d C" % target) if target else "heater off",
+        c.op("box/clim/tg", [text(Rect(r.x + 14, r.y + 86, r.w - 28, 26), ("target %d" % target) if target else "heater off",
                                   FONT_S, Theme.WARN if target else Theme.FAINT, Theme.SURFACE, LEFT)])
         humid = "%d%% RH" % round(box.humidity) if box.humidity is not None else "RH n/a"
         c.op("box/clim/h", [text(Rect(r.x + 14, r.y + 112, r.w - 28, 26), humid, FONT_S, Theme.TEXT, Theme.SURFACE, LEFT)])
@@ -166,9 +166,11 @@ class BoxPage(Page):
             line, color = "Happy Hare is disabled", Theme.WARN
         c.op(key + "/p", [text(Rect(r.x + 16, r.y + 90, r.w - 32, 32), line, FONT_S, color, Theme.SURFACE, LEFT)])
         gate = self.selected
-        c.op(key + "/sel", [text(Rect(r.x + 16, r.y + 148, r.w - 32, 40),
-                                 ("Selected: gate %d" % (gate + 1)) if gate >= 0 else "Pick a gate", FONT_S,
-                                 Theme.ACCENT if gate >= 0 else Theme.FAINT, Theme.SURFACE, LEFT)])
+        c.op(key + "/sel", [text(Rect(r.x + 16, r.y + r.h - 54, r.w - 170, 40),
+                                 ("Gate %d" % (gate + 1)) if gate >= 0 else "Pick a gate", FONT_S,
+                                 Theme.ACCENT if gate >= 0 else Theme.MUTED, Theme.SURFACE, LEFT)])
+        ui.button(c, key + "/info", Rect(r.x + r.w - 142, r.y + r.h - 56, 130, 46), "Details",
+                  lambda: app.open_modal(BoxStatus(app)), font=FONT_S, icon_name="info")
 
     def actions(self, c, box: mmu.Box, r: Rect):
         app = self.app
@@ -254,3 +256,84 @@ class SlotEditor(Modal):
     def _clear(self):
         self.close()
         self.app.gcode("MMU_GATE_MAP GATE=%d MATERIAL= COLOR= NAME= QUIET=1" % self.gate)
+
+
+class BoxStatus(Modal):
+    """Happy Hare details: sensors on the filament path, tool to gate map, clog/tangle protection and counters."""
+
+    width, height = 720, 440
+    SENSORS = [("Pre-gate", "mmu_pre_gate"), ("Gate", "mmu_gate"), ("Extruder", "extruder"), ("Toolhead", "toolhead")]
+
+    @property
+    def panel(self) -> Rect:
+        return Rect(40, 20, self.width, self.height)
+
+    def draw(self, c):
+        app, p = self.app, self.panel
+        mm = app.status.get("mmu", {}) or {}
+        box = box_state(app)
+        ui.label(c, "modal/title", Rect(p.x + 24, p.y + 8, 260, 44), "Box status", FONT_M)
+        pos = POSITIONS.get(box.filamentPos, "?") if box and box.enabled else "Happy Hare is disabled"
+        c.op("modal/pos", [text(Rect(p.x + 260, p.y + 8, p.w - 284, 44), pos, FONT_S, Theme.MUTED, Theme.SURFACE, RIGHT)])
+
+        # filament path: sensors as dots on a line
+        sensors = mm.get("sensors", {}) or {}
+        nodes = [(label, bool(sensors[name])) for label, name in self.SENSORS if name in sensors]
+        nodes.append(("Nozzle", bool(box and box.filament == "Loaded" and box.filamentPos >= 10)))
+        area = Rect(p.x + 24, p.y + 58, p.w - 48, 96)
+        c.op("modal/pathbg", [fill(area, Theme.SURFACE)])
+        step = area.w // len(nodes)
+        cy = area.y + 30
+        for i, (label, on) in enumerate(nodes):
+            cx = area.x + step * i + step // 2
+            if i + 1 < len(nodes):
+                nx = area.x + step * (i + 1) + step // 2
+                c.op("modal/seg%d" % i, [fill(Rect(cx + 14, cy - 2, nx - cx - 28, 4), Theme.ACCENT if on else Theme.RAISED)])
+            color = Theme.OK if on else Theme.RAISED
+            c.op("modal/dot%d" % i, [disc(cx, cy, 14, color)] + ([] if on else [disc(cx, cy, 9, Theme.SURFACE)]))
+            c.op("modal/lab%d" % i, [text(Rect(cx - step // 2, area.y + 54, step, 34), label, FONT_S,
+                                          Theme.TEXT if on else Theme.MUTED, Theme.SURFACE, CENTER)])
+
+        # tool to gate map
+        c.op("modal/tl", [text(Rect(p.x + 24, p.y + 160, 300, 28), "TOOL TO GATE", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+        ttg = mm.get("ttg_map") or []
+        count = max(1, len(ttg) or int(mm.get("num_gates", 4) or 4))
+        chips = Rect(p.x + 24, p.y + 190, p.w - 48, 50).split_h(min(count, 8), 8)
+        for t, cell in enumerate(chips):
+            gate = ttg[t] if t < len(ttg) else t
+            current = box is not None and box.tool == t
+            face = Theme.ACCENT if current else Theme.SURFACE2
+            ink = Theme.BG if current else Theme.TEXT
+            c.op("modal/ttg%d" % t, rounded(cell, face, 8, Theme.SURFACE) + [text(cell, "T%d > %d" % (t, gate + 1), FONT_S, ink, face, CENTER)])
+
+        # protection and counters
+        fg = mm.get("flowguard", {}) or {}
+        trigger = str(fg.get("trigger") or "")
+        if trigger:
+            guard, gcolor = trigger.capitalize(), Theme.ERR
+        elif fg.get("enabled"):
+            guard, gcolor = "Watching", Theme.OK
+        else:
+            guard, gcolor = "Off", Theme.MUTED
+        cells = [
+            ("CLOG / TANGLE", guard, gcolor),
+            ("ENDLESS SPOOL", "On" if mm.get("endless_spool_enabled") else "Off", Theme.TEXT),
+            ("TOOLCHANGES", str(mm.get("num_toolchanges", 0)), Theme.TEXT),
+        ]
+        for i, ((k, v, color), cell) in enumerate(zip(cells, Rect(p.x + 24, p.y + 252, p.w - 48, 70).split_h(3, 12))):
+            c.op("modal/pk%d" % i, [fill(cell, Theme.SURFACE), text(cell.row(0, 28), k, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT),
+                                    text(cell.row(30, 38), v, FONT_M, color, Theme.SURFACE, LEFT)])
+        level = float(fg.get("level", 0.0) or 0.0)
+        frac = level / 100.0 if level > 1 else level
+        ui.bar(c, "modal/level", Rect(p.x + 24, p.y + 330, p.w - 48, 10), frac, Theme.ERR if trigger else Theme.ACCENT)
+        extra = []
+        if mm.get("sync_feedback_state") and mm.get("sync_feedback_enabled"):
+            extra.append("Sync " + str(mm["sync_feedback_state"]))
+        remaining = mm.get("extruder_filament_remaining")
+        if remaining is not None:
+            extra.append("%d mm left in extruder" % round(float(remaining)))
+        if mm.get("spoolman_support") not in (None, "off"):
+            extra.append("Spoolman " + str(mm["spoolman_support"]))
+        c.op("modal/extra", [fill(Rect(p.x + 24, p.y + 342, p.w - 48, 30), Theme.SURFACE),
+                             text(Rect(p.x + 24, p.y + 342, p.w - 48, 30), "   ".join(extra), FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+        ui.button(c, "modal/close", Rect(p.x + 24, p.y + p.h - 64, p.w - 48, 52), "Close", self.close, style=ui.ACCENT, font=FONT_S)

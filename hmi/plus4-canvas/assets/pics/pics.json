@@ -21,6 +21,18 @@
   "check",
   "warning"
  ],
+ "icons2": [
+  "mmu",
+  "wifi",
+  "info",
+  "refresh",
+  "lock"
+ ],
+ "icon2_bgs": [
+  "surface",
+  "surface2",
+  "accent"
+ ],
  "icon_sizes": [
   24,
   32
@@ -98,6 +110,12 @@
   "ic32_raised": 11246,
   "ic32_accent": 11142,
   "ic32_accent_dim": 11433,
+  "ic2_24_surface": 2714,
+  "ic2_24_surface2": 2695,
+  "ic2_24_accent": 2616,
+  "ic2_32_surface": 4086,
+  "ic2_32_surface2": 4025,
+  "ic2_32_accent": 3952,
   "cr_surface_bg": 3977,
   "cr_surface2_surface": 4028,
   "cr_raised_surface": 4215,

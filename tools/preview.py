@@ -30,7 +30,8 @@ FONTS = {0: ("Regular", 16), 1: ("Regular", 20), 2: ("Regular", 24), 3: ("Regula
          10: ("SemiBold", 16), 11: ("SemiBold", 20), 12: ("SemiBold", 24), 13: ("SemiBold", 32)}
 PIC_FILES = ([f"ic{n}_{bg}" for n in (24, 32) for bg in ("bg", "surface", "surface2", "raised", "accent", "accent_dim")]
              + ["cr_surface_bg", "cr_surface2_surface", "cr_raised_surface", "cr_surface2_bg", "cr_raised_bg",
-                "cr_accent_bg", "cr_accent_surface", "cr_accent_dim_surface", "cr_err_dim_surface", "cr_bg_surface"])
+                "cr_accent_bg", "cr_accent_surface", "cr_accent_dim_surface", "cr_err_dim_surface", "cr_bg_surface"]
+             + [f"ic2_{n}_{bg}" for n in (24, 32) for bg in ("surface", "surface2", "accent")])
 
 
 def load_font(style, px):
@@ -67,6 +68,9 @@ class Glass:
         elif cmd.startswith("cirs "):
             x, y, r, c = map(int, cmd[5:].split(","))
             self.d.ellipse([x - r, y - r, x + r, y + r], fill=unrgb(c))
+        elif cmd.startswith("cir "):
+            x, y, r, c = map(int, cmd[4:].split(","))
+            self.d.ellipse([x - r, y - r, x + r, y + r], outline=unrgb(c))
         elif cmd.startswith("line "):
             x1, y1, x2, y2, c = map(int, cmd[5:].split(","))
             self.d.line([x1, y1, x2, y2], fill=unrgb(c))
@@ -99,7 +103,8 @@ class FakeClient:
             return self.files
         if method == "server.files.metadata":
             return {"estimated_time": 9120, "filament_total": 12500, "layer_height": 0.2, "object_height": 42.4,
-                    "filament_type": "PLA", "slicer": "OrcaSlicer"}
+                    "filament_type": "[\"PLA\", \"PLA\"]", "slicer": "OrcaSlicer", "filament_weight_total": 37.2,
+                    "thumbnails": [{"width": 96, "height": 96, "relative_path": ".thumbs/x-96x96.png"}]}
         if method == "printer.info":
             return {"state": "ready", "software_version": "v0.13.0-656-g4cc47cf5-dirty", "state_message": "Printer is ready"}
         return {}
@@ -150,6 +155,15 @@ def base_status(path):
         status["mmu"]["filament"] = "Loaded"
         status["mmu"]["gate"] = 0
         status["mmu"]["filament_pos"] = 10
+        status["mmu"]["tool"] = 0
+        status["mmu"]["sensors"] = {"mmu_pre_gate": True, "mmu_gate": True, "extruder": True}
+        status["mmu"]["ttg_map"] = [0, 1, 2, 3]
+        status["mmu"]["flowguard"] = {"trigger": "", "level": 0.18, "enabled": True}
+        status["mmu"]["endless_spool_enabled"] = 1
+        status["mmu"]["num_toolchanges"] = 12
+        status["mmu"]["sync_feedback_state"] = "neutral"
+        status["mmu"]["sync_feedback_enabled"] = 1
+        status["mmu"]["spoolman_support"] = "push"
         status.setdefault("aht10 box1_env", {"humidity": 28})
     return status
 
@@ -218,8 +232,37 @@ async def main(out, status_path):
                          ("box", box.BoxPage), ("system", pages.SystemPage)):
         app.register(nav_id, page)
 
+    import io
+    import urllib.request
+
+    from klipmi.ui.plus4canvas import wifi
+
+    class FakeResp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    art = Image.new("RGB", (96, 96), (30, 34, 41))
+    ImageDraw.Draw(art).polygon([(20, 70), (48, 14), (76, 70)], fill=(230, 80, 60))
+    ImageDraw.Draw(art).rectangle([34, 52, 62, 70], fill=(60, 140, 230))
+    buf = io.BytesIO()
+    art.save(buf, "PNG")
+    urllib.request.urlopen = lambda url, timeout=0: FakeResp(buf.getvalue())
+
+    async def fake_scan(rescan=True):
+        return [wifi.Network("HomeNet", 100, True, True, True), wifi.Network("HomeNet_2GHz", 92, True, False, True),
+                wifi.Network("Neighbour-5G", 61, True), wifi.Network("Guest open", 44, False),
+                wifi.Network("Cafe WiFi", 31, True), wifi.Network("Office_2G", 18, True)]
+
+    async def fake_status():
+        return "HomeNet", 100, "192.168.1.50"
+
+    wifi.scan, wifi.status = fake_scan, fake_status
+
     async def shot(name):
-        await asyncio.sleep(0.01)  # let spawned loads finish
+        await asyncio.sleep(0.05)  # let spawned loads finish
         before = glass.count
         app.render()
         glass.img.save(os.path.join(out, name + ".png"))
@@ -259,6 +302,34 @@ async def main(out, status_path):
         status["mmu"]["print_state"] = "pause_locked"
         status["mmu"]["reason_for_pause"] = "Failed to load gate 2: no filament detected at the extruder"
         await shot("13-box-error")
+    app.go_nav("files")
+    app.open_modal(pages.FileDetails(app, "benchy_PLA_0.2mm.gcode"))
+    await asyncio.sleep(0.3)
+    await shot("15-file-details")
+    app.close_modal()
+    app.go_nav("system")
+    await shot("16-system")
+    app.open_modal(pages.WifiModal(app))
+    await shot("17-wifi")
+    app.close_modal()
+    app.open_modal(dialogs.TextEntry(app, "Password for Neighbour-5G", lambda s: None, secret=True, ok="Connect", initial="hunter22"))
+    await shot("18-keyboard")
+    app.close_modal()
+    app.open_modal(pages.About(app))
+    await asyncio.sleep(0.05)
+    await shot("19-about")
+    app.close_modal()
+    if "mmu" in status:
+        status["mmu"]["print_state"] = "initialized"
+        app.go_nav("box")
+        await shot("20-box")
+        app.open_modal(box.BoxStatus(app))
+        await shot("21-box-status")
+        app.close_modal()
+    app.open_modal(dialogs.Keypad(app, "Part fan speed", 60, 0, 100, lambda v: None, unit="%",
+                                  presets=[("Off", 0), ("Low", 25), ("Medium", 50), ("High", 75), ("Full", 100)]))
+    await shot("22-keypad-fan")
+    app.close_modal()
     app.klippy = "error"
     app.klippy_message = "MCU 'mmu' shutdown: Timer too close\nOnce the underlying issue is corrected, use the FIRMWARE_RESTART command."
     app.go(pages.HomePage)
