@@ -7,7 +7,7 @@ that is unique on the page. Buttons look pressed while `canvas.pressed` is their
 
 from typing import Callable, Optional, Sequence
 
-from .gfx import (CENTER, FONT_L, FONT_M, FONT_S, LEFT, RIGHT, Canvas, Rect, Theme, big_font, big_width, clean,
+from .gfx import (CENTER, FONT_L, FONT_M, FONT_S, FONT_XS, LEFT, RIGHT, Canvas, Rect, Theme, big_font, big_width, clean,
                   disc, fill, icon, mix, ring, rounded, text, text_width, wrap_px)
 
 NORMAL, ACCENT, DANGER, GHOST, OK = "normal", "accent", "danger", "ghost", "ok"
@@ -21,7 +21,7 @@ _STYLE = {
 }
 
 
-def card(c: Canvas, key: str, r: Rect, color: int = Theme.SURFACE, bg: int = Theme.BG, radius: int = 8,
+def card(c: Canvas, key: str, r: Rect, color: int = Theme.SURFACE, bg: int = Theme.BG, radius: int = 12,
          erase: bool = False):
     c.op(key, rounded(r, color, radius, bg), [fill(r, bg)] if erase else ())
 
@@ -183,3 +183,35 @@ def segmented(c: Canvas, key: str, r: Rect, options: Sequence[str], selected: in
     for i, cell in enumerate(r.split_h(len(options), gap)):
         button(c, "%s/%d" % (key, i), cell, options[i], (lambda i=i: on_select(i)),
                style=ACCENT if i == selected else NORMAL, bg=bg, font=FONT_S if cell.w < 90 else FONT_M, radius=8)
+
+
+def section(c: Canvas, key: str, r: Rect, icon_name: str, caption: str, bg: int = Theme.SURFACE):
+    """A card heading: small icon, then the title in muted capitals."""
+    c.op(key, [fill(r, bg), icon(icon_name, r.x, r.y + (r.h - 24) // 2, 24, bg),
+               text(Rect(r.x + 34, r.y, r.w - 34, r.h), caption.upper(), FONT_S, Theme.MUTED, bg, LEFT)], [fill(r, bg)])
+
+
+def tile_button(c: Canvas, key: str, r: Rect, icon_name: str, caption: str, sub: str,
+                action: Optional[Callable[[], None]], active: bool = False, danger: bool = False, bg: int = Theme.SURFACE):
+    """A square action tile: icon on top, caption, then a short state line."""
+    face, ink = (Theme.ACCENT, Theme.BG) if active else (Theme.SURFACE2, Theme.TEXT)
+    sub_ink = mix(ink, face, 0.35)
+    if danger:
+        ink, sub_ink = Theme.ERR, mix(Theme.ERR, face, 0.4)
+    if action is None:
+        face, ink, sub_ink = mix(face, bg, 0.5), Theme.FAINT, Theme.FAINT
+    elif c.pressed == key:
+        face = mix(face, Theme.TEXT, 0.25)
+    size = 32
+    cmds = rounded(r, face, 12, bg)
+    cx = r.x + (r.w - size) // 2
+    if icon_name and not danger:
+        cmds.append(icon(icon_name, cx, r.y + 14, size, face))
+    elif danger:  # no icon strip is baked on the neutral face for a red glyph: use a ring and bar as a stop sign
+        cmds += [disc(r.x + r.w // 2, r.y + 30, 14, Theme.ERR), disc(r.x + r.w // 2, r.y + 30, 11, face),
+                 fill(Rect(r.x + r.w // 2 - 6, r.y + 24, 12, 12), Theme.ERR)]
+    cmds.append(text(Rect(r.x + 4, r.y + 54, r.w - 8, 36), caption, FONT_S, ink, face, CENTER))
+    cmds.append(text(Rect(r.x + 4, r.y + 92, r.w - 8, 30), sub, FONT_S, sub_ink, face, CENTER))
+    c.op(key, cmds, [fill(r, bg)])
+    if action is not None:
+        c.hit(key, r, action)

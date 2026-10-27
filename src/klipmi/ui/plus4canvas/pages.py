@@ -114,8 +114,9 @@ def heater_tile(app: App, c, key: str, r: Rect, obj: str, name: str, lo: int, hi
     face = mix(Theme.SURFACE, Theme.TEXT, 0.08) if pressed else Theme.SURFACE
     ui.card(c, key, r, face)
     c.op(key + "/strip", rounded(Rect(r.x, r.y + 14, 6, r.h - 28), accent, 3))
-    c.op(key + "/name", [text(Rect(r.x + 20, r.y + 8, r.w - 70, 30), name.upper(), FONT_S, Theme.MUTED, face, LEFT)])
-    c.op(key + "/icon", [icon(HEATER_ICON.get(obj, "nozzle"), r.x + r.w - 40, r.y + 12, 24, Theme.SURFACE)])
+    ui.section(c, key + "/head", Rect(r.x + 20, r.y + 10, r.w - 36, 28), HEATER_ICON.get(obj, "nozzle"), name, face)
+    if target > 0:
+        ui.dot(c, key + "/dot", r.x + r.w - 24, r.y + 24, 7, accent, face)
     ui.temp_big(c, key + "/temp", r.x + 20, r.y + 38, temp, 52, Theme.TEXT, face)
     line = Rect(r.x + 20, r.y + r.h - 40, r.w - 36, 32)
     if target > 0:
@@ -169,35 +170,42 @@ class HomePage(Page):
         else:
             headline = {"complete": "Print complete", "cancelled": "Print cancelled", "error": "Print failed"}.get(state, "Ready")
             color = {"complete": Theme.OK, "error": Theme.ERR}.get(state, Theme.TEXT)
-            c.op(k + "/name", [text(inner.row(0, 40), headline, FONT_M, color, Theme.SURFACE, LEFT)])
-            if state in ("complete", "cancelled", "error") and filename:
-                c.op(k + "/sub", [text(inner.row(40, 32), filename, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
-            ui.button(c, k + "/files", Rect(inner.x, inner.y + inner.h - 154, inner.w, 76), "Print",
+            ui.section(c, k + "/head", inner.row(0, 28), "play", "Status", Theme.SURFACE)
+            c.op(k + "/name", [text(inner.row(34, 40), headline, FONT_M, color, Theme.SURFACE, LEFT)])
+            sub = filename if state in ("complete", "cancelled", "error") and filename else self._filament()
+            c.op(k + "/sub", [text(Rect(inner.x, inner.y + 76, inner.w, 30), sub, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+            ui.button(c, k + "/files", Rect(inner.x, inner.y + inner.h - 148, inner.w, 72), "Print",
                       lambda: app.go_nav("files"), style=ui.ACCENT, icon_name="play")
-            row = Rect(inner.x, inner.y + inner.h - 68, inner.w, 68).split_h(2, 12)
+            row = Rect(inner.x, inner.y + inner.h - 64, inner.w, 64).split_h(2, 12)
             ui.button(c, k + "/pre", row[0], "Preheat", lambda: preheat(app), font=FONT_S, icon_name="nozzle")
             ui.button(c, k + "/cool", row[1], "Cool down", lambda: cool_down(app), font=FONT_S)
+
+    def _filament(self) -> str:
+        from .box import box_state
+        box = box_state(self.app)
+        if box is None:
+            return "No print queued"
+        if box.filament == "Loaded" and 0 <= box.gate < len(box.slots):
+            slot = box.slots[box.gate]
+            return "Loaded: %s, gate %d" % (slot.material or "filament", box.gate + 1)
+        return "No filament loaded"
 
     def quick(self, c, r: Rect):
         app = self.app
         cells = r.split_h(4, 10)
         light = app.get("output_pin caselight", "value", None)
-        lc = cells[0]
-        ui.card(c, "home/q/light", lc)
-        c.op("home/q/light/t", [text(Rect(lc.x + 6, lc.y + 14, lc.w - 12, 34), "Light", FONT_S, Theme.TEXT, Theme.SURFACE, CENTER)])
-        if light is not None:
-            ui.toggle(c, "home/q/light/sw", Rect(lc.x + (lc.w - 76) // 2, lc.y + 80, 76, 40), light > 0,
-                      lambda: app.gcode("SET_PIN PIN=caselight VALUE=%d" % (0 if light > 0 else 1)))
-        else:
-            c.op("home/q/light/na", [text(Rect(lc.x + 6, lc.y + 80, lc.w - 12, 40), "n/a", FONT_S, Theme.MUTED, Theme.SURFACE, CENTER)])
+        ui.tile_button(c, "home/q/light", cells[0], "light", "Light", "On" if light else "Off",
+                       (lambda: app.gcode("SET_PIN PIN=caselight VALUE=%d" % (0 if light else 1))) if light is not None else None,
+                       active=bool(light))
         fan = app.get("fan", "speed", 0.0) or 0.0
-        ui.button(c, "home/q/fans", cells[1], "Fans", lambda: app.go(ControlPage.tab(app, 2)), style=ui.NORMAL,
-                  sub="%d%%" % round(fan * 100), icon_name="" )
+        ui.tile_button(c, "home/q/fans", cells[1], "fan", "Fans", "%d%%" % round(fan * 100),
+                       lambda: app.go(ControlPage.tab(app, 2)), active=fan > 0)
         homed = (app.get("toolhead", "homed_axes", "") or "")
-        ui.button(c, "home/q/home", cells[2], "Home", lambda: app.gcode("G28"), sub="all" if len(homed) < 3 else "homed")
-        ui.button(c, "home/q/stop", cells[3], "STOP", lambda: confirm(
+        ui.tile_button(c, "home/q/home", cells[2], "home", "Home", "homed" if len(homed) >= 3 else "all axes",
+                       lambda: app.gcode("G28"))
+        ui.tile_button(c, "home/q/stop", cells[3], "stop", "Stop", "e-stop", lambda: confirm(
             app, "Emergency stop", "Stops all motors and heaters at once. Klipper needs a firmware restart afterwards.",
-            "Stop now", lambda: app.spawn(app.call("printer.emergency_stop"))), style=ui.DANGER)
+            "Stop now", lambda: app.spawn(app.call("printer.emergency_stop"))), danger=True)
 
 
 # --- Printing ----------------------------------------------------------------------
@@ -442,7 +450,7 @@ class ControlPage(Page):
             key = "ctl/f/%d" % i
             face = mix(Theme.SURFACE, Theme.TEXT, 0.08) if c.pressed == key else Theme.SURFACE
             ui.card(c, key, r, face)
-            c.op(key + "/n", [text(Rect(r.x + 20, r.y + 10, r.w - 150, 32), name.upper(), FONT_S, Theme.MUTED, face, LEFT)])
+            ui.section(c, key + "/n", Rect(r.x + 20, r.y + 12, r.w - 150, 32), "fan", name, face)
             ui.big_text(c, key + "/v", r.x + 20, r.y + 52, "%d%%" % round(speed * 100), 52,
                         Theme.ACCENT if speed > 0 else Theme.TEXT, face)
             ui.bar(c, key + "/bar", Rect(r.x + 20, r.y + r.h - 34, r.w - 40, 14), speed, Theme.ACCENT, bg=face)
@@ -452,7 +460,7 @@ class ControlPage(Page):
         if light is not None:
             r = cells[len(items)]
             ui.card(c, "ctl/light", r)
-            c.op("ctl/light/n", [text(Rect(r.x + 20, r.y + 10, r.w - 40, 32), "CASE LIGHT", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+            ui.section(c, "ctl/light/n", Rect(r.x + 20, r.y + 12, r.w - 40, 32), "light", "Case light", Theme.SURFACE)
             c.op("ctl/light/v", [text(Rect(r.x + 20, r.y + 60, r.w - 140, 56), "On" if light > 0 else "Off", FONT_M,
                                       Theme.ACCENT if light > 0 else Theme.TEXT, Theme.SURFACE, LEFT)])
             ui.toggle(c, "ctl/light/sw", Rect(r.x + r.w - 110, r.y + 62, 84, 44), light > 0,
@@ -515,8 +523,9 @@ class FilesPage(Page):
             if name.lower().endswith(".gcode"):
                 name = name[:-6]
             when = time.strftime("%d %b", time.localtime(f.get("modified", 0)))
-            c.op(key + "/n", [text(Rect(r.x + 18, r.y, r.w - 70, 34), name, FONT_M, Theme.TEXT, face, LEFT)])
-            c.op(key + "/m", [text(Rect(r.x + 18, r.y + 36, r.w - 70, 28), "%s   %s" % (when, fmt_size(f.get("size", 0))),
+            c.op(key + "/i", [icon("files", r.x + 16, r.y + (r.h - 24) // 2, 24, face)])
+            c.op(key + "/n", [text(Rect(r.x + 56, r.y, r.w - 108, 34), name, FONT_M, Theme.TEXT, face, LEFT)])
+            c.op(key + "/m", [text(Rect(r.x + 56, r.y + 36, r.w - 108, 28), "%s   %s" % (when, fmt_size(f.get("size", 0))),
                                    FONT_S, Theme.MUTED, face, LEFT)])
             c.op(key + "/go", [icon("right", r.x + r.w - 42, r.y + (r.h - 24) // 2, 24, Theme.SURFACE if not pressed else Theme.SURFACE2)])
             c.hit(key, r, lambda p=path: self.app.open_modal(FileDetails(self.app, p)))
@@ -564,7 +573,7 @@ class FileDetails(Modal):
 
     def _fetch_thumb(self) -> List[str]:
         thumbs = sorted(self.meta.get("thumbnails") or [], key=lambda t: t.get("width", 0))
-        pick = next((t for t in thumbs if t.get("width", 0) >= 90), thumbs[-1] if thumbs else None)
+        pick = thumbs[-1] if thumbs else None  # the largest one, it is scaled down to 64 x 64 blocks
         if pick is None:
             return []
         rel = os.path.dirname(self.path) + "/" + pick["relative_path"] if os.path.dirname(self.path) else pick["relative_path"]
@@ -576,7 +585,7 @@ class FileDetails(Modal):
             logging.info("thumbnail %s: %s", url, e)
             return []
         p = self.panel
-        return mosaic(png, p.x + 28, p.y + 74, 48, 4, Theme.SURFACE2)
+        return mosaic(png, p.x + 28, p.y + 74, 64, 3, Theme.SURFACE2)
 
     def draw(self, c):
         app, p, m = self.app, self.panel, self.meta
@@ -663,7 +672,7 @@ class SystemPage(Page):
         app = self.app
         net = Rect(CONTENT.x, CONTENT.y, 344, 196)
         ui.card(c, "sys/net", net)
-        c.op("sys/net/h", [text(Rect(net.x + 20, net.y + 10, 220, 30), "WI-FI", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+        ui.section(c, "sys/net/h", Rect(net.x + 20, net.y + 12, 220, 30), "wifi", "Wi-Fi", Theme.SURFACE)
         signal_bars(c, "sys/net/bars", net.x + net.w - 56, net.y + 12, self.signal, Theme.ACCENT, Theme.SURFACE, Theme.RAISED)
         c.op("sys/net/ssid", [text(Rect(net.x + 20, net.y + 44, net.w - 40, 40),
                                    self.ssid or ("Not connected" if self.loaded else "..."), FONT_M,
@@ -677,11 +686,11 @@ class SystemPage(Page):
         ui.button(c, "sys/screenoff", lower[1], "Screen off", self._screen_off, bg=Theme.BG, border=True)
         screen = Rect(CONTENT.x + 356, CONTENT.y, CONTENT.w - 356, 206)
         ui.card(c, "sys/screen", screen)
-        c.op("sys/screen/b", [text(Rect(screen.x + 16, screen.y + 8, 300, 30), "BRIGHTNESS", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+        ui.section(c, "sys/screen/b", Rect(screen.x + 16, screen.y + 8, 300, 30), "light", "Brightness", Theme.SURFACE)
         b = app.settings["brightness"]
         ui.segmented(c, "sys/screen/bs", Rect(screen.x + 12, screen.y + 40, screen.w - 24, 52), ["%d%%" % v for v in self.brightness],
                      self.brightness.index(b) if b in self.brightness else 3, self._brightness, gap=6)
-        c.op("sys/screen/s", [text(Rect(screen.x + 16, screen.y + 102, 300, 30), "SCREEN OFF AFTER", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+        ui.section(c, "sys/screen/s", Rect(screen.x + 16, screen.y + 102, 300, 30), "pause", "Screen off after", Theme.SURFACE)
         s = app.settings["sleep_minutes"]
         ui.segmented(c, "sys/screen/ss", Rect(screen.x + 12, screen.y + 136, screen.w - 24, 52),
                      ["Off" if v == 0 else "%dm" % v for v in self.sleep], self.sleep.index(s) if s in self.sleep else 2,
