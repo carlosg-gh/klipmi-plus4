@@ -39,13 +39,17 @@ class Klipmi:
 
         self.state: KlipmiState = KlipmiState()
         self.state.options = Config()
-        self.state.display = TJC(
-            self.state.options.klipmi.device,
-            self.state.options.klipmi.baud,
-            self.onDisplayEvent,
-        )
-        self.state.display.encoding = "utf-8"
-        self.ui: BaseUi = ui.implementations[self.state.options.klipmi.ui](self.state)
+        uiClass = ui.implementations[self.state.options.klipmi.ui]
+        if uiClass.ownsDisplay:
+            self.state.display = None
+        else:
+            self.state.display = TJC(
+                self.state.options.klipmi.device,
+                self.state.options.klipmi.baud,
+                self.onDisplayEvent,
+            )
+            self.state.display.encoding = "utf-8"
+        self.ui: BaseUi = uiClass(self.state)
         self.state.printer = Printer(
             self.state.options.moonraker,
             self.onConnectionEvent,
@@ -53,6 +57,7 @@ class Klipmi:
             self.ui.onFileListUpdate,
             self.ui.printerObjects,
             self.ui.resolveObjects,
+            self.ui.onGcodeResponse,
         )
 
     async def onDisplayEvent(self, type: EventType, data):
@@ -75,8 +80,10 @@ class Klipmi:
             self.ui.onKlipperError()
 
     async def init(self):
-        await self.state.display.connect()
-        await self.state.display.wakeup()
+        if self.state.display is not None:
+            await self.state.display.connect()
+            await self.state.display.wakeup()
+        await self.ui.start()
         self.ui.onNotReady()
         await self.state.printer.connect()
 

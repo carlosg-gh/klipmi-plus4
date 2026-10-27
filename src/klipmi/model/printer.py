@@ -63,6 +63,7 @@ class Printer(MoonrakerListener):
         filesCallback: Callable,
         objects: Dict[str, List[str]],
         resolveObjects: Callable | None = None,
+        gcodeCallback: Callable | None = None,
     ):
         self.stateCallback: Callable = stateCallback
         self.printerCallback: Callable = printerCallback
@@ -70,6 +71,7 @@ class Printer(MoonrakerListener):
         self.options: MoonrakerConfig = options
         self.objects = objects
         self.resolveObjects = resolveObjects
+        self.gcodeCallback = gcodeCallback
         self.available: List[str] = []
         self.running: bool = False
         self.status: dict = {}
@@ -120,6 +122,9 @@ class Printer(MoonrakerListener):
         elif method == Notifications.STATUS_UPDATE:
             updateNestedDict(self.status, data[0])
             tasks.append(self.printerCallback(self.status))
+        elif method == Notifications.GCODE_RESPONSE and self.gcodeCallback is not None:
+            for line in data:
+                self.gcodeCallback(str(line))
         elif method == Notifications.FILES_CHANGED:
             self.files = data[0]
             tasks.append(self.filesCallback(self.files))

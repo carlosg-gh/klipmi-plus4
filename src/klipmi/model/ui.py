@@ -92,6 +92,7 @@ class BasePage(ABC):
 
 class BaseUi(ABC):
     currentPage: BasePage | None = None
+    ownsDisplay: bool = False  # True: the UI opens the serial port itself (no nextion client)
 
     @classproperty
     @abstractmethod
@@ -100,6 +101,13 @@ class BaseUi(ABC):
 
     def __init__(self, state: KlipmiState):
         self.state = state
+
+    async def start(self):
+        """Called once before connecting to Moonraker."""
+        pass
+
+    def onGcodeResponse(self, line: str):
+        pass
 
     async def resolveObjects(self, available, query) -> Dict[str, List[str] | None]:
         """Objects to subscribe to, given the ones Klipper has. Override to add optional ones."""

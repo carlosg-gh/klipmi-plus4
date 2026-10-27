@@ -20,5 +20,6 @@ from typing import Dict, Type
 from klipmi.model.ui import BaseUi
 from klipmi.ui.openq1 import OpenQ1UI
 from klipmi.ui.plus4 import Plus4UI
+from klipmi.ui.plus4canvas import CanvasUI
 
-implementations: Dict[str, Type[BaseUi]] = {"openq1": OpenQ1UI, "plus4": Plus4UI}
+implementations: Dict[str, Type[BaseUi]] = {"openq1": OpenQ1UI, "plus4": Plus4UI, "plus4canvas": CanvasUI}
