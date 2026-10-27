@@ -25,18 +25,40 @@ class Plus4Page(BasePage):
         return -1
 
 
+# The stock `main` page shows "UI version doesn't match firmware" unless the global
+# `logo.version.val` equals this (UI 1.7.1). QIDI's client sets it after the `logo` page
+# prints 0x91; that byte is not a known event to the nextion library (it swallows the
+# command ack), so the `logo` page is skipped and the value is set directly.
+UI_VERSION = 10701
+
+
 class BootPage(Plus4Page):
     @classproperty
     def name(cls) -> str:
-        return "logo"
+        return "main"
+
+    async def init(self):
+        await self.state.display.set("logo.version.val", UI_VERSION, self.state.options.timeout)
+        await self.state.display.command("page main", self.state.options.timeout)  # re-run the version check
 
 
 class MainPage(Plus4Page):
-    """Home. Temperatures only for now; navigation to the other stock pages is not wired up yet."""
+    """Home. Temperatures and file name only for now; navigation to the other stock pages is not wired up yet."""
 
     @classproperty
     def name(cls) -> str:
         return "main"
+
+    async def init(self):
+        await self.onPrinterStatusUpdate(self.state.printer.status)
+
+    async def onPrinterStatusUpdate(self, data: dict):
+        display, timeout = self.state.display, self.state.options.timeout
+        for comp, heater in (("n0", "extruder"), ("n1", "heater_bed"), ("n2", "heater_generic chamber")):
+            temperature = data.get(heater, {}).get("temperature")
+            if temperature is not None:
+                await display.set(comp + ".val", int(temperature), timeout)
+        await display.set("t3.txt", data.get("print_stats", {}).get("filename", ""), timeout)
 
     async def onDisplayEvent(self, type: EventType, data):
         if type == EventType.TOUCH:
