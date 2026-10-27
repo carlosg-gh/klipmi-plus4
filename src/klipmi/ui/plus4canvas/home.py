@@ -60,7 +60,7 @@ class HomePage(Page):
         if box is not None and box.temperature is not None:
             tiles.append(("dryer", ""))
         top = Rect(CONTENT.x, CONTENT.y, CONTENT.w, 192)
-        for (kind, obj), r in zip(tiles, top.split_h(len(tiles), 8)):
+        for (kind, obj), r in zip(tiles, top.split_h(max(1, len(tiles)), 8)):  # none before the first status
             if kind == "h":
                 self.heater(c, r, obj)
             else:

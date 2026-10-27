@@ -3,9 +3,9 @@
 Our own minimal TJC project for the Plus 4 screen (TJC8048X250_011, 800x480). One blank page `canvas`, no timers, no touch components: Python draws everything (`src/klipmi/canvas/`). Built with the TJC "USART HMI" editor 1.68.2.
 
 - `plus4-canvas.HMI`: editor project (encoding utf-8, orientation 0)
-- `plus4-canvas.tft`: compiled firmware (656,888 B: pictures 82,157 B, fonts 76,068 B, no errors or warnings; 28 pictures; sha256 `f3669c15...3f2e`)
+- `plus4-canvas.tft`: compiled firmware (919,032 B: pictures 341,209 B, fonts 75,068 B, no errors or warnings; 21 pictures; sha256 `2f16f7d1...3e56`)
 - `fonts/*.zi`: generated fonts (editor font tool, anti-aliasing box ticked)
-- `assets/svg/`: Material Symbols (Apache-2.0) source icons; `assets/pics/`: PNGs rendered by `tools/hmi_assets.js` (`node tools/hmi_assets.js`, needs Chrome, no packages)
+- `assets/pics/`: PNGs rendered by `tools/hmi_assets.js` (`node tools/hmi_assets.js`, needs Chrome, no packages). The icons are our own 24-unit stroke drawings, kept as SVG paths in that script (`assets/svg/` holds the Material Symbols of earlier firmware, unused now)
 - Inter is SIL OFL: `Inter-4.0.zip` from github.com/rsms/inter/releases (not committed; installed per user, only needed to regenerate the fonts)
 
 ## Program.s (runs at power-up)
@@ -35,44 +35,26 @@ The screen therefore boots at 921600 baud (QIDI's firmware boots at 115200).
 Ids 0-3 (Inter Regular) are unused: on the glass Regular looked heavy and ragged on dark faces, Light is clean there, and only SemiBold stays readable as dark ink on the cyan accent.
 
 ## Pictures (ids)
-Pictures have no alpha, so every icon strip and corner sheet is baked against one background colour from `Theme` (`src/klipmi/canvas/gfx.py`). Pick the id that matches the surface you draw on.
+Pictures have no alpha, so every icon strip is baked for one (ink, backdrop) pair and every corner sheet for one (fill, backdrop) pair, all from `Theme` (`src/klipmi/canvas/gfx.py`). `assets/pics/pics.json` lists them in id order (`order`).
 
-Icon strips (white icons, one cell per icon, cell width = height = size; `xpic x,y,size,size,k*size,0,id`):
-cell order `nozzle bed chamber fan light spool home control files box gear play pause stop up down left right check warning`
+Icon strips: 66 icons, 25 per row, cell = icon size (`xpic x,y,s,s,(n%25)*s,(n//25)*s,id`), icon order in `ICON_NAMES` and `tools/hmi_assets.js`.
 
-| ids 0-5 (24 px) | ids 6-11 (32 px) | background |
+| ids (24 px) | ids (32 px) | ink on backdrop |
 |---|---|---|
-| 0 | 6 | BG |
-| 1 | 7 | SURFACE |
-| 2 | 8 | SURFACE2 |
-| 3 | 9 | RAISED |
-| 4 | 10 | ACCENT |
-| 5 | 11 | ACCENT_DIM |
+| 0 | 10 | MUTED on BG |
+| 1 | 11 | TEXT on BG |
+| 2 | 12 | ACCENT on SURFACE |
+| 3 | 13 | MUTED on SURFACE |
+| 4 | 14 | TEXT on SURFACE |
+| 5 | 15 | OK on SURFACE |
+| 6 | 16 | MUTED on SURFACE2 |
+| 7 | 17 | TEXT on SURFACE2 |
+| 8 | 18 | BG on ACCENT |
+| 9 | 19 | ERR_INK on ERR_DIM |
 
-Corner sheets, 96x100 px (fill colour over backdrop colour). Radii 4, 6, 8, 10, 12, 16, 20, 24 are stacked top to bottom (y offsets 0, 4, 10, 18, 28, 40, 56, 76); in a radius row the four r x r corners sit side by side at x = k*r, k = 0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right. The corner outside the shape shows the backdrop colour.
+Picture 20 is the corner atlas: 24 sheets of 96x100 px, 8 per row, in `CORNER_PAIRS` order. In a sheet, radii 4, 6, 8, 10, 12, 16, 20, 24 are stacked top to bottom (y 0, 4, 10, 18, 28, 40, 56, 76) and the four r x r corners sit side by side at x = k*r (top-left, top-right, bottom-left, bottom-right).
 
-| id | fill | backdrop |
-|---|---|---|
-| 12 | SURFACE | BG |
-| 13 | SURFACE2 | SURFACE |
-| 14 | RAISED | SURFACE |
-| 15 | SURFACE2 | BG |
-| 16 | RAISED | BG |
-| 17 | ACCENT | BG |
-| 18 | ACCENT | SURFACE |
-| 19 | ACCENT_DIM | SURFACE |
-| 20 | ERR_DIM | SURFACE |
-| 21 | BG | SURFACE |
-
-Second icon strip set (appended later, pictures 22-27; `ICON2_*` in `gfx.py`), cell order `mmu wifi info refresh lock`, drawn in three backdrops only:
-
-| ids 22-24 (24 px) | ids 25-27 (32 px) | background |
-|---|---|---|
-| 22 | 25 | SURFACE |
-| 23 | 26 | SURFACE2 |
-| 24 | 27 | ACCENT |
-
-Adding or reordering pictures renumbers the ids: keep this table, `assets/pics/pics.json` and the canvas code in step.
+Adding or reordering pictures renumbers the ids: keep this table, `pics.json` and `gfx.py` in step. To import them in order, copy the PNGs to a folder with numbered names (`00_ic24_muted_bg.png` and so on) and add them one at a time: the editor's open dialog cannot take all 21 names at once.
 
 ## Rebuild
 1. `node tools/hmi_assets.js` (only if icons or palette changed), delete the pictures in the editor's picture list, re-add them one at a time in the id order above.
