@@ -5,8 +5,8 @@ Our own minimal TJC project for the Plus 4 screen (TJC8048X250_011, 800x480). On
 - `plus4-canvas.HMI`: editor project (encoding utf-8, orientation 0)
 - `plus4-canvas.tft`: compiled firmware (919,032 B: pictures 341,209 B, fonts 75,068 B, no errors or warnings; 21 pictures; sha256 `2f16f7d1...3e56`)
 - `fonts/*.zi`: generated fonts (editor font tool, anti-aliasing box ticked)
-- `assets/pics/`: PNGs rendered by `tools/hmi_assets.js` (`node tools/hmi_assets.js`, needs Chrome, no packages). The icons are our own 24-unit stroke drawings, kept as SVG paths in that script (`assets/svg/` holds the Material Symbols of earlier firmware, unused now)
-- Inter is SIL OFL: `Inter-4.0.zip` from github.com/rsms/inter/releases (not committed; installed per user, only needed to regenerate the fonts)
+- `assets/pics/`: PNGs rendered by `tools/hmi_assets.js` (`node tools/hmi_assets.js`, needs Node and Chrome, no packages). The icons are original 24-unit stroke drawings, kept as SVG paths in that script
+- Fonts are generated from Inter (SIL OFL 1.1, licence in `fonts/OFL.txt`): `Inter-4.0.zip` from github.com/rsms/inter/releases, installed in Windows; only needed to regenerate the fonts
 
 ## Program.s (runs at power-up)
 ```
@@ -59,7 +59,7 @@ Adding or reordering pictures renumbers the ids: keep this table, `pics.json` an
 ## Rebuild
 1. `node tools/hmi_assets.js` (only if icons or palette changed), delete the pictures in the editor's picture list, re-add them one at a time in the id order above.
 2. Compile (toolbar), File > "output production file" with the folder set to this directory.
-3. Flash: `~/klipmi/venv/bin/python ~/klipmi/flash_tft.py --baud 921600 plus4-canvas.tft` on the printer (this firmware boots at 921600; a screen still on QIDI firmware that was not driven by klipmi answers at 115200, so use `--baud 115200 --upload-baud 921600`).
+3. Flash: `.venv/bin/python tools/flash_tft.py --baud 921600 hmi/plus4-canvas/plus4-canvas.tft` on the printer (this firmware boots at 921600; a screen still on QIDI firmware that was not driven by klipmi answers at 115200, so use `--baud 115200 --upload-baud 921600`).
 
 ## Measured on the real screen (2026-10-27, 921600 baud, `tools/bench.py`, 60 commands per test, ms per command incl. flow control)
 | command | window 256 B | window 900 B (what the writer uses) |

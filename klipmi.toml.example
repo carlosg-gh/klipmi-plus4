@@ -8,13 +8,13 @@ host = "0.0.0.0"
 port = 7125
 api-key = "xxxxxxxxxxxxxxxxxxx"
 
-# QIDI Plus 4 (replaces FreeDi's screen service; stop FreeDi first):
+# QIDI Plus 4 (replaces the FreeDi/stock screen service; stop it first):
 #
 # [klipmi]
 # device = "/dev/ttyS1"
-# baudrate = 921600
-# ui = "plus4"
-# mmu = "auto"      # "auto": MMU page only if Happy Hare is configured; "off": never
+# baudrate = 115200 # the speed the screen boots at on other firmware; plus4canvas switches to 921600 by itself
+# ui = "plus4canvas" # "plus4" drives QIDI's stock HMI instead (older, fewer features)
+# mmu = "auto"      # "auto": MMU pages only if Happy Hare is configured; "off": never
 #
 # [moonraker]
 # host = "127.0.0.1"

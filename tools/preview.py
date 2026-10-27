@@ -310,6 +310,7 @@ async def main(out, status_path):
         return "HomeNet", 100, "192.168.1.50"
 
     wifi.scan, wifi.status = fake_scan, fake_status
+    system.local_ip = lambda: "192.168.1.50"
 
     async def shot(name, settle=0.2):
         for _ in range(3):  # spawned loads finish, then the frame that shows them

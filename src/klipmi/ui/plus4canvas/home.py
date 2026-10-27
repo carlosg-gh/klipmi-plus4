@@ -94,11 +94,11 @@ class HomePage(Page):
     def dryer(self, c, r: Rect, box: mmu.Box):
         key = "home/dryer"
         ui.card(c, key, r)
-        ui.icon_label(c, key + "/l", Rect(r.x + 16, r.y + 12, r.w - 80, 28), "drop", "Dryer")
-        humid = "%d%%" % round(box.humidity) if box.humidity is not None else ""
-        ui.label(c, key + "/rh", Rect(r.x + r.w - 76, r.y + 12, 60, 28), humid, FONT_XS, Theme.MUTED, Theme.SURFACE, RIGHT)
+        ui.icon_label(c, key + "/l", Rect(r.x + 16, r.y + 12, r.w - 32, 28), "drop", "Dryer")
         ui.value(c, key + "/v", Rect(r.x + 16, r.y + 70, r.w - 24, 58), ui.temp_str(box.temperature), FONT_D48, degree=True)
-        line = Rect(r.x + 16, r.y + 128, r.w - 24, 30)
+        humid = "%d%% RH" % round(box.humidity) if box.humidity is not None else ""
+        ui.label(c, key + "/rh", Rect(r.x + r.w - 96, r.y + 128, 80, 30), humid, FONT_XS, Theme.MUTED, Theme.SURFACE, RIGHT)
+        line = Rect(r.x + 16, r.y + 128, r.w - 112, 30)
         if box.target:
             ui.value(c, key + "/t", line, "/ %d" % round(box.target), FONT_S, Theme.MUTED, degree=True)
         else:
