@@ -17,19 +17,19 @@ W, H = 800, 480
 
 # Fonts and pictures of hmi/plus4-canvas/plus4-canvas.tft (ids as listed in hmi/plus4-canvas/README.md).
 # Light text looks best on dark faces; SemiBold keeps dark ink readable on bright faces (text() swaps by itself).
-FONT_S, FONT_M, FONT_L, FONT_XL = 6, 7, 8, 9          # Inter Light 16/20/24/32
-FONT_SB, FONT_MB, FONT_LB, FONT_XLB = 10, 11, 12, 13  # Inter SemiBold 16/20/24/32
+# Text is big on purpose (5 inch screen): 24 px is the smallest body size, 32 px the normal one.
+FONT_XS, FONT_S, FONT_M, FONT_L = 7, 8, 9, 9          # Inter Light 20 / 24 / 32 / 32 (L is an alias of M)
+FONT_XSB, FONT_SB, FONT_MB = 11, 12, 13              # Inter SemiBold 20 / 24 / 32
 FONT_D48, FONT_D96 = 4, 5                             # SemiBold digits 48/96
-# ids 0-3 are Inter Regular 16/20/24/32 (unused)
-FONT_PX = {0: 16, 1: 20, 2: 24, 3: 32, FONT_S: 16, FONT_M: 20, FONT_L: 24, FONT_XL: 32,
-           FONT_SB: 16, FONT_MB: 20, FONT_LB: 24, FONT_XLB: 32, FONT_D48: 48, FONT_D96: 96}
-LINE_H = {FONT_S: 20, FONT_M: 24, FONT_L: 30, FONT_XL: 40, FONT_SB: 20, FONT_MB: 24, FONT_LB: 30, FONT_XLB: 40,
-          FONT_D48: 58, FONT_D96: 116}
+# ids 0-3 are Inter Regular 16/20/24/32, 6 and 10 Light/SemiBold 16 (unused)
+FONT_PX = {0: 16, 1: 20, 2: 24, 3: 32, 6: 16, 7: 20, 8: 24, 9: 32, 10: 16, 11: 20, 12: 24, 13: 32,
+           FONT_D48: 48, FONT_D96: 96}
+LINE_H = {7: 26, 8: 30, 9: 40, 11: 26, 12: 30, 13: 40, FONT_D48: 58, FONT_D96: 116}
 DIGITS = {FONT_D48, FONT_D96}  # only "0123456789.-:%C /+"
-BOLD_OF = {FONT_S: FONT_SB, FONT_M: FONT_MB, FONT_L: FONT_LB, FONT_XL: FONT_XLB}
+BOLD_OF = {7: 11, 8: 12, 9: 13}
 
-_BOLD = {FONT_D48, FONT_D96, FONT_SB, FONT_MB, FONT_LB, FONT_XLB}
-_LIGHT = {FONT_S, FONT_M, FONT_L, FONT_XL}
+_BOLD = {FONT_D48, FONT_D96, 10, 11, 12, 13}
+_LIGHT = {6, 7, 8, 9}
 
 
 def text_width(s: str, font: int) -> int:
@@ -115,6 +115,25 @@ class Rect:
 
 
 # --- Command builders (pure) ------------------------------------------------
+
+def wrap_px(s: str, width: int, font: int, max_lines: int) -> List[str]:
+    """Break text into lines no wider than `width` px (words stay whole; the last line gets .. when cut)."""
+    lines: List[str] = []
+    for para in [clean(s)]:
+        line = ""
+        for word in para.split():
+            trial = (line + " " + word).strip()
+            if line and text_width(trial, font) > width:
+                lines.append(line)
+                line = word
+            else:
+                line = trial
+        lines.append(line)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = fit(lines[-1] + " ..", width, font)
+    return lines
+
 
 def clean(s: str) -> str:
     """Text the display can show: no quotes or control characters, ASCII only."""

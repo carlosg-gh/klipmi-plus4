@@ -18,9 +18,10 @@ from .gfx import (CENTER, FONT_L, FONT_M, FONT_S, LEFT, RIGHT, Canvas, Rect, The
                   text)
 from . import widgets as ui
 
-TOP = Rect(0, 0, 800, 44)
-CONTENT = Rect(12, 52, 776, 348)
-NAV = Rect(0, 408, 800, 72)
+SIDE = Rect(0, 0, 80, 480)  # permanent icon sidebar
+TOP = Rect(88, 0, 712, 52)
+CONTENT = Rect(88, 56, 704, 416)
+AREA = Rect(80, 52, 720, 428)  # everything a page may repaint
 NAV_ICONS = {"home": "home", "control": "control", "files": "files", "box": "box", "system": "gear"}
 
 
@@ -260,7 +261,7 @@ class App:
             self.close_area = None
         if self.clear_content and self.modal is None:
             # New page: keep the status and navigation bars, repaint only the page area
-            c.clear_region(Rect(0, TOP.h, 800, NAV.y - TOP.h), Theme.BG,
+            c.clear_region(AREA, Theme.BG,
                            drop=lambda k: not (k.startswith("top") or k.startswith("nav")))
             self.clear_content = False
         c.begin()
@@ -285,26 +286,28 @@ class App:
     def _draw_top(self, c: Canvas, page: Page):
         now = time.time()
         if self.toast_text and now < self.toast_until:
-            ui.card(c, "top/toast", Rect(8, 6, 784, 34), mix(self.toast_color, Theme.BG, 0.25), radius=10)
-            c.op("top/toast/t", [text(Rect(20, 6, 760, 34), self.toast_text, FONT_M, Theme.TEXT,
-                                      mix(self.toast_color, Theme.BG, 0.25), LEFT)])
+            face = mix(self.toast_color, Theme.BG, 0.25)
+            ui.card(c, "top/toast", Rect(96, 6, 696, 44), face, radius=12)
+            c.op("top/toast/t", [text(Rect(112, 6, 664, 44), self.toast_text, FONT_S, Theme.TEXT, face, LEFT)])
             return
         c.op("top/bar", [fill(TOP, Theme.BG)])
-        c.op("top/bar/title", [text(Rect(16, 6, 420, 34), page.title, FONT_M, Theme.TEXT, Theme.BG, LEFT)])
+        c.op("top/bar/title", [text(Rect(100, 6, 440, 44), page.title, FONT_M, Theme.TEXT, Theme.BG, LEFT)])
         state = self.print_state if self.klippy == "ready" else self.klippy
         color = {"printing": Theme.ACCENT, "paused": Theme.WARN, "error": Theme.ERR, "complete": Theme.OK,
                  "cancelled": Theme.MUTED, "shutdown": Theme.ERR, "startup": Theme.WARN}.get(state, Theme.RAISED)
         ink = Theme.TEXT if color in (Theme.RAISED, Theme.MUTED, Theme.ERR) else Theme.BG
-        ui.chip(c, "top/bar/state", Rect(590, 10, 120, 26), state.capitalize(), color, Theme.BG, ink)
-        c.op("top/bar/clock", [text(Rect(716, 6, 76, 34), time.strftime("%H:%M"), FONT_M, Theme.MUTED, Theme.BG, RIGHT)])
+        ui.chip(c, "top/bar/state", Rect(548, 10, 140, 36), state.capitalize(), color, Theme.BG, ink)
+        c.op("top/bar/clock", [text(Rect(700, 6, 92, 44), time.strftime("%H:%M"), FONT_S, Theme.MUTED, Theme.BG, RIGHT)])
 
     def _draw_nav(self, c: Canvas, page: Page):
         items = [(i, cap) for i, cap, visible in self.nav_items if visible(self)]
-        c.op("nav", [fill(NAV, Theme.BG), fill(Rect(0, NAV.y, 800, 1), Theme.SURFACE)])
-        cells = Rect(8, NAV.y + 8, 784, NAV.h - 16).split_h(len(items), 8)
-        for (nav_id, caption), cell in zip(items, cells):
-            ui.button(c, "nav/" + nav_id, cell, caption, (lambda n=nav_id: self.go_nav(n)),
-                      style=ui.ACCENT if page.nav == nav_id else ui.GHOST, bg=Theme.BG, radius=8,
+        c.op("nav", [fill(SIDE, Theme.BG), fill(Rect(SIDE.w - 1, 0, 1, SIDE.h), Theme.SURFACE)])
+        n = len(items)
+        step = min(92, (SIDE.h - 24) // max(1, n))
+        for k, (nav_id, caption) in enumerate(items):
+            cell = Rect(8, 12 + k * step, 64, step - 8)
+            ui.button(c, "nav/" + nav_id, cell, "", (lambda n=nav_id: self.go_nav(n)),
+                      style=ui.ACCENT if page.nav == nav_id else ui.GHOST, bg=Theme.BG, radius=12,
                       icon_name=NAV_ICONS.get(nav_id, ""))
 
     def _draw_modal(self, c: Canvas):

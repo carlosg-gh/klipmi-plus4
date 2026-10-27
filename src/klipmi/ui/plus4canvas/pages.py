@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Pages of the Plus 4 canvas UI: home, printing, control, files, system and the offline screen."""
+"""Pages of the Plus 4 canvas UI: home, printing, control, files, system and the offline screen.
+
+Layout: an icon sidebar on the left (80 px), a status bar on top and CONTENT (704 x 416) for the page.
+Text is large on purpose: FONT_S is 24 px, FONT_M 32 px, digits come from the 48/96 px digit fonts.
+"""
 
 import asyncio
 import logging
@@ -9,7 +13,7 @@ from typing import List, Optional
 
 from klipmi.canvas import widgets as ui
 from klipmi.canvas.app import CONTENT, App, Modal, Page
-from klipmi.canvas.gfx import (CENTER, FONT_L, FONT_M, FONT_S, LEFT, RIGHT, Rect, Theme, disc, fill, heat_color, mix,
+from klipmi.canvas.gfx import (CENTER, FONT_M, FONT_S, LEFT, RIGHT, Rect, Theme, disc, fill, heat_color, mix,
                                rounded, text)
 
 from .dialogs import Choice, choose, confirm, keypad
@@ -36,20 +40,6 @@ def fmt_duration(seconds: Optional[float]) -> str:
     seconds = int(seconds)
     h, m = seconds // 3600, (seconds % 3600) // 60
     return "%dh %02dm" % (h, m) if h else "%dm %02ds" % (m, seconds % 60)
-
-
-def wrap(s: str, width_chars: int, max_lines: int) -> List[str]:
-    out: List[str] = []
-    for para in str(s).splitlines() or [""]:
-        line = ""
-        for word in para.split():
-            if len(line) + len(word) + 1 > width_chars and line:
-                out.append(line)
-                line = word
-            else:
-                line = (line + " " + word).strip()
-        out.append(line)
-    return out[:max_lines]
 
 
 def set_target(app: App, obj: str, name: str, lo: int, hi: int):
@@ -90,13 +80,13 @@ def heater_tile(app: App, c, key: str, r: Rect, obj: str, name: str, lo: int, hi
     face = mix(Theme.SURFACE, Theme.TEXT, 0.08) if pressed else Theme.SURFACE
     ui.card(c, key, r, face)
     c.op(key + "/strip", rounded(Rect(r.x, r.y + 14, 6, r.h - 28), accent, 3))
-    c.op(key + "/name", [text(Rect(r.x + 20, r.y + 10, r.w - 70, 22), name.upper(), FONT_S, Theme.MUTED, face, LEFT)])
-    ui.big_text(c, key + "/temp", r.x + 20, r.y + 38, "%d" % round(temp), 46, Theme.TEXT, face)
+    c.op(key + "/name", [text(Rect(r.x + 20, r.y + 8, r.w - 60, 30), name.upper(), FONT_S, Theme.MUTED, face, LEFT)])
+    ui.big_text(c, key + "/temp", r.x + 20, r.y + 40, "%d" % round(temp), 52, Theme.TEXT, face)
     heating = target > 0
-    c.op(key + "/target", [text(Rect(r.x + r.w - 104, r.y + r.h - 34, 90, 26),
-                                ("> %d C" % target) if heating else "off", FONT_M,
-                                accent if heating else Theme.FAINT, face, RIGHT)])
-    ui.dot(c, key + "/dot", r.x + r.w - 22, r.y + 21, 7, accent if heating else Theme.RAISED, face)
+    c.op(key + "/target", [text(Rect(r.x + 20, r.y + r.h - 40, r.w - 36, 32),
+                                ("> %d C" % target) if heating else "off", FONT_S,
+                                accent if heating else Theme.FAINT, face, LEFT)])
+    ui.dot(c, key + "/dot", r.x + r.w - 24, r.y + 24, 8, accent if heating else Theme.RAISED, face)
     c.hit(key, r, lambda: set_target(app, obj, name, lo, hi))
 
 
@@ -109,10 +99,10 @@ class HomePage(Page):
     def draw(self, c):
         app = self.app
         tiles = [h for h in HEATERS if app.has(h[0])]
-        for (obj, name, lo, hi, hot), r in zip(tiles, Rect(12, 52, 250, 348).split_v(3, 12)):
+        for (obj, name, lo, hi, hot), r in zip(tiles, Rect(CONTENT.x, CONTENT.y, 224, CONTENT.h).split_v(3, 10)):
             heater_tile(app, c, "home/h/" + obj, r, obj, name, lo, hi, hot)
-        self.job(c, Rect(274, 52, 514, 228))
-        self.quick(c, Rect(274, 292, 514, 108))
+        self.job(c, Rect(CONTENT.x + 236, CONTENT.y, 468, 262))
+        self.quick(c, Rect(CONTENT.x + 236, CONTENT.y + 272, 468, 144))
 
     def job(self, c, r: Rect):
         app = self.app
@@ -123,20 +113,19 @@ class HomePage(Page):
         inner = r.inset(20, 16)
         if app.printing:
             progress = app.get("display_status", "progress", 0.0) or 0.0
-            c.op(k + "/name", [text(inner.row(0, 26), filename or "Printing", FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
-            ui.big_text(c, k + "/pct", inner.x, inner.y + 40, "%d%%" % int(progress * 100), 64,
+            c.op(k + "/name", [text(inner.row(0, 40), filename or "Printing", FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
+            ui.big_text(c, k + "/pct", inner.x, inner.y + 52, "%d%%" % int(progress * 100), 52,
                         Theme.ACCENT if state == "printing" else Theme.WARN, Theme.SURFACE)
             duration = app.get("print_stats", "print_duration", 0.0) or 0.0
             left = duration / progress - duration if progress > 0.02 else None
             info = app.get("print_stats", "info", {}) or {}
             layer = "%s / %s" % (info.get("current_layer") or "-", info.get("total_layer") or "-")
-            stats = Rect(inner.x + 250, inner.y + 40, inner.w - 250, 70)
-            c.op(k + "/s1", [text(stats.row(0, 22), "Remaining  " + fmt_duration(left), FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
-            c.op(k + "/s2", [text(stats.row(26, 22), "Layer  " + layer, FONT_M, Theme.MUTED, Theme.SURFACE, LEFT)])
-            c.op(k + "/s3", [text(stats.row(52, 22), "Elapsed  " + fmt_duration(duration), FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
-            ui.bar(c, k + "/bar", Rect(inner.x, inner.y + 120, inner.w, 14), progress,
+            stats = Rect(inner.x + 130, inner.y + 48, inner.w - 130, 66)
+            c.op(k + "/s1", [text(stats.row(0, 32), "Left  " + fmt_duration(left), FONT_S, Theme.TEXT, Theme.SURFACE, LEFT)])
+            c.op(k + "/s2", [text(stats.row(34, 32), "Layer  " + layer, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+            ui.bar(c, k + "/bar", Rect(inner.x, inner.y + 124, inner.w, 16), progress,
                    Theme.ACCENT if state == "printing" else Theme.WARN)
-            row = Rect(inner.x, inner.y + inner.h - 50, inner.w, 50).split_h(2, 12)
+            row = Rect(inner.x, inner.y + inner.h - 64, inner.w, 64).split_h(2, 12)
             ui.button(c, k + "/open", row[0], "Details", lambda: self.app.go(PrintingPage), style=ui.ACCENT)
             if state == "paused":
                 ui.button(c, k + "/pr", row[1], "Resume", lambda: app.gcode("RESUME"))
@@ -145,40 +134,41 @@ class HomePage(Page):
         else:
             headline = {"complete": "Print complete", "cancelled": "Print cancelled", "error": "Print failed"}.get(state, "Ready")
             color = {"complete": Theme.OK, "error": Theme.ERR}.get(state, Theme.TEXT)
-            c.op(k + "/name", [text(inner.row(0, 34), headline, FONT_L, color, Theme.SURFACE, LEFT)])
+            c.op(k + "/name", [text(inner.row(0, 40), headline, FONT_M, color, Theme.SURFACE, LEFT)])
             message = app.get("display_status", "message", "") or ""
             sub = filename if state in ("complete", "cancelled", "error") and filename else (message or "Pick a file to start printing.")
-            c.op(k + "/sub", [text(inner.row(44, 24), sub, FONT_M, Theme.MUTED, Theme.SURFACE, LEFT)])
+            c.op(k + "/sub", [text(inner.row(48, 32), sub, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
             temps = []
             for obj, name, *_ in HEATERS:
                 if app.has(obj) and (app.get(obj, "target", 0) or 0) > 0:
                     temps.append("%s %d C" % (name.lower(), app.get(obj, "target")))
-            c.op(k + "/heat", [text(inner.row(76, 24), ("Heating: " + ", ".join(temps)) if temps else "All heaters off",
-                                        FONT_S, Theme.WARN if temps else Theme.FAINT, Theme.SURFACE, LEFT)])
-            row = Rect(inner.x, inner.y + inner.h - 60, inner.w, 60).split_h(3, 12)
-            ui.button(c, k + "/files", row[0], "Print", lambda: app.go_nav("files"), style=ui.ACCENT)
-            ui.button(c, k + "/pre", row[1], "Preheat", lambda: preheat(app))
-            ui.button(c, k + "/cool", row[2], "Cool down", lambda: cool_down(app))
+            c.op(k + "/heat", [text(inner.row(86, 32), ("Heating: " + ", ".join(temps)) if temps else "All heaters off",
+                                    FONT_S, Theme.WARN if temps else Theme.FAINT, Theme.SURFACE, LEFT)])
+            row = Rect(inner.x, inner.y + inner.h - 68, inner.w, 68).split_h(3, 10)
+            ui.button(c, k + "/files", row[0], "Print", lambda: app.go_nav("files"), style=ui.ACCENT, font=FONT_S)
+            ui.button(c, k + "/pre", row[1], "Preheat", lambda: preheat(app), font=FONT_S)
+            ui.button(c, k + "/cool", row[2], "Cool down", lambda: cool_down(app), font=FONT_S)
 
     def quick(self, c, r: Rect):
         app = self.app
-        cells = r.split_h(4, 12)
+        cells = r.split_h(4, 10)
         light = app.get("output_pin caselight", "value", None)
         ui.card(c, "home/q/light", cells[0])
-        c.op("home/q/light/t", [text(Rect(cells[0].x + 16, cells[0].y + 12, cells[0].w - 32, 22), "Light", FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
+        lc = cells[0]
+        c.op("home/q/light/t", [text(Rect(lc.x + 6, lc.y + 14, lc.w - 12, 34), "Light", FONT_S, Theme.TEXT, Theme.SURFACE, CENTER)])
         if light is not None:
-            ui.toggle(c, "home/q/light/sw", Rect(cells[0].x + 16, cells[0].y + 56, 72, 36), light > 0,
+            ui.toggle(c, "home/q/light/sw", Rect(lc.x + (lc.w - 76) // 2, lc.y + 80, 76, 40), light > 0,
                       lambda: app.gcode("SET_PIN PIN=caselight VALUE=%d" % (0 if light > 0 else 1)))
         else:
-            c.op("home/q/light/na", [text(Rect(cells[0].x + 16, cells[0].y + 56, 90, 30), "n/a", FONT_S, Theme.FAINT, Theme.SURFACE, LEFT)])
+            c.op("home/q/light/na", [text(Rect(lc.x + 6, lc.y + 80, lc.w - 12, 40), "n/a", FONT_S, Theme.FAINT, Theme.SURFACE, CENTER)])
         fan = app.get("fan", "speed", 0.0) or 0.0
         ui.button(c, "home/q/fans", cells[1], "Fans", lambda: app.go(ControlPage.tab(app, 2)), style=ui.NORMAL,
-                  sub="part %d%%" % round(fan * 100))
+                  sub="%d%%" % round(fan * 100))
         if app.has("mmu"):
             from .box import mmu_summary
             ui.button(c, "home/q/box", cells[2], "Box", lambda: app.go_nav("box"), sub=mmu_summary(app))
         else:
-            ui.button(c, "home/q/box", cells[2], "Motors", lambda: app.gcode("M84"), sub="turn off")
+            ui.button(c, "home/q/box", cells[2], "Motors", lambda: app.gcode("M84"), sub="off")
         ui.button(c, "home/q/stop", cells[3], "STOP", lambda: confirm(
             app, "Emergency stop", "Stops all motors and heaters at once. Klipper needs a firmware restart afterwards.",
             "Stop now", lambda: app.spawn(app.call("printer.emergency_stop"))), style=ui.DANGER)
@@ -209,17 +199,16 @@ class PrintingPage(Page):
     def draw(self, c):
         app = self.app
         state = app.print_state
-        r = Rect(12, 52, 776, 348)
+        r = CONTENT
         ui.card(c, "pr/card", r)
         name = app.get("print_stats", "filename", "") or "No file"
-        c.op("pr/card/name", [text(Rect(32, 66, 600, 30), name, FONT_L, Theme.TEXT, Theme.SURFACE, LEFT)])
-        ui.chip(c, "pr/card/state", Rect(660, 70, 110, 26), state.capitalize(),
+        c.op("pr/card/name", [text(Rect(r.x + 20, r.y + 14, r.w - 190, 40), name, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
+        ui.chip(c, "pr/card/state", Rect(r.x + r.w - 150, r.y + 16, 130, 36), state.capitalize(),
                 {"printing": Theme.ACCENT, "paused": Theme.WARN, "complete": Theme.OK, "error": Theme.ERR}.get(state, Theme.RAISED),
                 Theme.SURFACE, Theme.BG if state in ("printing", "paused", "complete") else Theme.TEXT)
         progress = app.get("display_status", "progress", 0.0) or 0.0
         color = Theme.WARN if state == "paused" else Theme.ACCENT
-        ui.big_text(c, "pr/card/pct", 32, 112, "%d%%" % int(progress * 100), 80, color, Theme.SURFACE)
-        ui.bar(c, "pr/card/bar", Rect(32, 212, 736, 18), progress, color)
+        ui.big_text(c, "pr/card/pct", r.x + 20, r.y + 66, "%d%%" % int(progress * 100), 84, color, Theme.SURFACE)
         duration = app.get("print_stats", "print_duration", 0.0) or 0.0
         slicer = self.estimate.get("estimated_time")
         left = duration / progress - duration if progress > 0.02 else (slicer - duration if slicer else None)
@@ -232,12 +221,17 @@ class PrintingPage(Page):
             ("Layer", "%s / %s" % (info.get("current_layer") or "-", info.get("total_layer") or "-")),
             ("Speed", "%d%%" % round(speed * 100)), ("Flow", "%d%%" % round(flow * 100)), ("Z offset", "%+.3f" % zoff),
         ]
-        grid = Rect(372, 108, 396, 96)
         for i, (k, v) in enumerate(stats):
-            cell = Rect(grid.x + (i % 3) * 132, grid.y + (i // 3) * 48, 128, 46)
-            c.op("pr/card/k%d" % i, [text(cell.row(0, 20), k, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
-            c.op("pr/card/v%d" % i, [text(cell.row(20, 24), v, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
-        row = Rect(32, 300, 736, 80).split_h(4, 14)
+            cell = Rect(r.x + 250 + (i % 3) * 146, r.y + 64 + (i // 3) * 76, 144, 72)
+            c.op("pr/card/k%d" % i, [text(cell.row(0, 30), k, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+            c.op("pr/card/v%d" % i, [text(cell.row(30, 40), v, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
+        ui.bar(c, "pr/card/bar", Rect(r.x + 20, r.y + 222, r.w - 40, 22), progress, color)
+        temps = []
+        for obj, label, *_ in HEATERS:
+            if app.has(obj):
+                temps.append("%s %d / %d" % (label, round(app.get(obj, "temperature", 0) or 0), round(app.get(obj, "target", 0) or 0)))
+        c.op("pr/card/temps", [text(Rect(r.x + 20, r.y + 256, r.w - 40, 36), "    ".join(temps), FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+        row = Rect(r.x + 20, r.y + r.h - 100, r.w - 40, 80).split_h(4, 12)
         if state == "paused":
             ui.button(c, "pr/pr", row[0], "Resume", lambda: app.gcode("RESUME"), style=ui.ACCENT)
         else:
@@ -245,7 +239,8 @@ class PrintingPage(Page):
         ui.button(c, "pr/tune", row[1], "Tune", lambda: app.open_modal(Tune(app)))
         light = app.get("output_pin caselight", "value", None)
         ui.button(c, "pr/light", row[2], "Light", (lambda: app.gcode("SET_PIN PIN=caselight VALUE=%d" % (0 if light else 1)))
-                  if light is not None else None, sub="on" if light else "off", active=bool(light))
+                  if light is not None else None, active=bool(light))
+
         def cancel():
             confirm(app, "Cancel print", "Stop this print? It cannot be resumed.", "Cancel print",
                     lambda: app.gcode("CANCEL_PRINT"))
@@ -254,11 +249,11 @@ class PrintingPage(Page):
 
 
 class Tune(Modal):
-    width, height = 600, 330
+    width, height = 680, 400
 
     def draw(self, c):
         app, p = self.app, self.panel
-        ui.label(c, "modal/title", Rect(p.x + 24, p.y + 18, 300, 34), "Tune print", FONT_L)
+        ui.label(c, "modal/title", Rect(p.x + 24, p.y + 14, 300, 44), "Tune print", FONT_M)
         speed = round((app.get("gcode_move", "speed_factor", 1.0) or 1.0) * 100)
         flow = round((app.get("gcode_move", "extrude_factor", 1.0) or 1.0) * 100)
         zoff = (app.get("gcode_move", "homing_origin", [0, 0, 0]) or [0, 0, 0])[2]
@@ -267,17 +262,17 @@ class Tune(Modal):
                                        ("+10", lambda: app.gcode("M220 S%d" % (speed + 10))), ("100", lambda: app.gcode("M220 S100"))]),
             ("Flow", "%d%%" % flow, [("-1", lambda: app.gcode("M221 S%d" % max(50, flow - 1))),
                                      ("+1", lambda: app.gcode("M221 S%d" % (flow + 1))), ("100", lambda: app.gcode("M221 S100"))]),
-            ("Z offset", "%+.3f" % zoff, [("-0.01", lambda: app.gcode("SET_GCODE_OFFSET Z_ADJUST=-0.01 MOVE=1")),
-                                          ("+0.01", lambda: app.gcode("SET_GCODE_OFFSET Z_ADJUST=0.01 MOVE=1")),
-                                          ("-0.05", lambda: app.gcode("SET_GCODE_OFFSET Z_ADJUST=-0.05 MOVE=1"))]),
+            ("Z offset", "%+.3f" % zoff, [("-.01", lambda: app.gcode("SET_GCODE_OFFSET Z_ADJUST=-0.01 MOVE=1")),
+                                          ("+.01", lambda: app.gcode("SET_GCODE_OFFSET Z_ADJUST=0.01 MOVE=1")),
+                                          ("-.05", lambda: app.gcode("SET_GCODE_OFFSET Z_ADJUST=-0.05 MOVE=1"))]),
         ]
         for i, (name, value, buttons) in enumerate(rows):
-            y = p.y + 68 + i * 68
-            c.op("modal/n%d" % i, [text(Rect(p.x + 24, y, 120, 56), name, FONT_M, Theme.MUTED, Theme.SURFACE, LEFT)])
-            c.op("modal/v%d" % i, [text(Rect(p.x + 140, y, 110, 56), value, FONT_L, Theme.TEXT, Theme.SURFACE, LEFT)])
-            for j, ((cap, act), cell) in enumerate(zip(buttons, Rect(p.x + 260, y + 4, p.w - 284, 50).split_h(3, 10))):
+            y = p.y + 70 + i * 84
+            c.op("modal/n%d" % i, [text(Rect(p.x + 24, y, 150, 72), name, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+            c.op("modal/v%d" % i, [text(Rect(p.x + 176, y, 150, 72), value, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
+            for j, ((cap, act), cell) in enumerate(zip(buttons, Rect(p.x + 336, y + 4, p.w - 360, 64).split_h(3, 8))):
                 ui.button(c, "modal/b%d%d" % (i, j), cell, cap, act)
-        ui.button(c, "modal/close", Rect(p.x + 24, p.y + p.h - 50, p.w - 48, 40), "Done", self.close, style=ui.ACCENT)
+        ui.button(c, "modal/close", Rect(p.x + 24, p.y + p.h - 84, p.w - 48, 64), "Done", self.close, style=ui.ACCENT)
 
 
 # --- Control -------------------------------------------------------------------------
@@ -303,7 +298,7 @@ class ControlPage(Page):
         self.app.invalidate()
 
     def draw(self, c):
-        ui.segmented(c, "ctl/tabs", Rect(12, 52, 776, 48), self.tabs, self.current, self._select, bg=Theme.BG)
+        ui.segmented(c, "ctl/tabs", Rect(CONTENT.x, CONTENT.y, CONTENT.w, 56), self.tabs, self.current, self._select, bg=Theme.BG)
         [self.move, self.temperature, self.fans][self.current](c)
 
     # Move
@@ -312,6 +307,8 @@ class ControlPage(Page):
         homed = app.get("toolhead", "homed_axes", "") or ""
         pos = app.get("toolhead", "position", [0, 0, 0, 0]) or [0, 0, 0, 0]
         step = self.steps[self.step]
+        top = CONTENT.y + 64
+        height = CONTENT.h - 64
 
         def jog(axis, sign):
             if axis.lower() not in homed:
@@ -320,45 +317,44 @@ class ControlPage(Page):
             feed = 600 if axis == "Z" else 6000
             app.gcode("G91\nG1 %s%s F%d\nG90" % (axis, ("%g" % (sign * step)), feed))
 
-        pad = Rect(12, 112, 300, 288)
+        pad = Rect(CONTENT.x, top, 284, height)
         ui.card(c, "ctl/pad", pad)
         cells = [[None, ("Y+", "Y", 1), None], [("X-", "X", -1), ("home", None, 0), ("X+", "X", 1)], [None, ("Y-", "Y", -1), None]]
-        for r_i, row in enumerate(cells):
-            for c_i, cell in enumerate(row):
+        for row, rr_ in zip(cells, pad.inset(12).split_v(3, 8)):
+            for cell, rr in zip(row, rr_.split_h(3, 8)):
                 if cell is None:
                     continue
-                rr = Rect(pad.x + 14 + c_i * 94, pad.y + 14 + r_i * 88, 84, 80)
                 cap, axis, sign = cell
                 if axis is None:
-                    ui.button(c, "ctl/pad/home", rr, "Home", lambda: app.gcode("G28 X Y"), style=ui.ACCENT, sub="X Y", bg=Theme.SURFACE)
+                    ui.button(c, "ctl/pad/home", rr, "Home", lambda: app.gcode("G28 X Y"), style=ui.ACCENT, sub="XY", bg=Theme.SURFACE, font=FONT_S)
                 else:
-                    ui.button(c, "ctl/pad/" + cap, rr, cap, (lambda a=axis, s=sign: jog(a, s)), font=FONT_L, bg=Theme.SURFACE)
-        zcol = Rect(324, 112, 116, 288)
+                    ui.button(c, "ctl/pad/" + cap, rr, cap, (lambda a=axis, s=sign: jog(a, s)), bg=Theme.SURFACE)
+        zcol = Rect(CONTENT.x + 292, top, 108, height)
         ui.card(c, "ctl/z", zcol)
-        ui.button(c, "ctl/z/up", Rect(zcol.x + 14, zcol.y + 14, 88, 80), "Z+", lambda: jog("Z", 1), font=FONT_L, sub="bed down")
-        ui.button(c, "ctl/z/home", Rect(zcol.x + 14, zcol.y + 102, 88, 80), "Home", lambda: app.gcode("G28 Z"), style=ui.ACCENT, sub="Z")
-        ui.button(c, "ctl/z/down", Rect(zcol.x + 14, zcol.y + 190, 88, 80), "Z-", lambda: jog("Z", -1), font=FONT_L, sub="bed up")
-        side = Rect(452, 112, 336, 288)
+        zr = zcol.inset(12).split_v(3, 8)
+        ui.button(c, "ctl/z/up", zr[0], "Z+", lambda: jog("Z", 1))
+        ui.button(c, "ctl/z/home", zr[1], "Home", lambda: app.gcode("G28 Z"), style=ui.ACCENT, sub="Z", font=FONT_S)
+        ui.button(c, "ctl/z/down", zr[2], "Z-", lambda: jog("Z", -1))
+        side = Rect(CONTENT.x + 408, top, CONTENT.w - 408, height)
         ui.card(c, "ctl/side", side)
-        c.op("ctl/side/stepl", [text(Rect(side.x + 18, side.y + 12, 200, 22), "STEP (mm)", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
-        ui.segmented(c, "ctl/side/step", Rect(side.x + 14, side.y + 36, side.w - 28, 46), ["%g" % s for s in self.steps],
+        c.op("ctl/side/stepl", [text(Rect(side.x + 16, side.y + 8, 260, 30), "STEP (mm)", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+        ui.segmented(c, "ctl/side/step", Rect(side.x + 12, side.y + 40, side.w - 24, 56), ["%g" % s for s in self.steps],
                      self.step, self._set_step)
         for i, axis in enumerate("XYZ"):
-            cell = Rect(side.x + 18 + i * 104, side.y + 96, 96, 60)
+            cell = Rect(side.x + 16 + i * 90, side.y + 104, 88, 68)
             ok = axis.lower() in homed
-            c.op("ctl/side/a%s" % axis, [text(cell.row(0, 22), axis + (" homed" if ok else " not homed"), FONT_S,
-                                             Theme.OK if ok else Theme.WARN, Theme.SURFACE, LEFT),
-                                        text(cell.row(24, 30), "%.1f" % pos["XYZ".index(axis)], FONT_L, Theme.TEXT, Theme.SURFACE, LEFT)])
+            c.op("ctl/side/a%s" % axis, [text(cell.row(0, 28), axis, FONT_S, Theme.OK if ok else Theme.WARN, Theme.SURFACE, LEFT),
+                                         text(cell.row(28, 40), "%.1f" % pos["XYZ".index(axis)], FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
         nozzle = app.get("extruder", "temperature", 0) or 0
         can_extrude = nozzle >= 170
-        row1 = Rect(side.x + 14, side.y + 168, side.w - 28, 52).split_h(2, 10)
-        ui.button(c, "ctl/side/all", row1[0], "Home all", lambda: app.gcode("G28"), style=ui.ACCENT)
-        ui.button(c, "ctl/side/off", row1[1], "Motors off", lambda: app.gcode("M84"))
-        row2 = Rect(side.x + 14, side.y + 226, side.w - 28, 52).split_h(2, 10)
+        row1 = Rect(side.x + 12, side.y + 176, side.w - 24, 60).split_h(2, 8)
+        ui.button(c, "ctl/side/all", row1[0], "Home all", lambda: app.gcode("G28"), style=ui.ACCENT, font=FONT_S)
+        ui.button(c, "ctl/side/off", row1[1], "Motors off", lambda: app.gcode("M84"), font=FONT_S)
+        row2 = Rect(side.x + 12, side.y + 244, side.w - 24, side.h - 256).split_h(2, 8)
         ui.button(c, "ctl/side/ext", row2[0], "Extrude", (lambda: app.gcode("M83\nG1 E10 F300")) if can_extrude else None,
-                  sub="10 mm" if can_extrude else "heat to 170 C")
+                  sub="10 mm" if can_extrude else "heat first", font=FONT_S)
         ui.button(c, "ctl/side/ret", row2[1], "Retract", (lambda: app.gcode("M83\nG1 E-10 F1200")) if can_extrude else None,
-                  sub="10 mm" if can_extrude else "heat to 170 C")
+                  sub="10 mm" if can_extrude else "heat first", font=FONT_S)
 
     def _set_step(self, i):
         self.step = i
@@ -368,26 +364,26 @@ class ControlPage(Page):
     def temperature(self, c):
         app = self.app
         rows = [h for h in HEATERS if app.has(h[0])]
-        area = Rect(12, 112, 776, 216)
-        for i, ((obj, name, lo, hi, hot), r) in enumerate(zip(rows, area.split_v(3, 10))):
+        area = Rect(CONTENT.x, CONTENT.y + 64, CONTENT.w, 250)
+        for i, ((obj, name, lo, hi, hot), r) in enumerate(zip(rows, area.split_v(3, 8))):
             temp = app.get(obj, "temperature", 0) or 0
             target = app.get(obj, "target", 0) or 0
             key = "ctl/t/%d" % i
             ui.card(c, key, r)
             c.op(key + "/strip", rounded(Rect(r.x, r.y + 10, 6, r.h - 20), heat_color(temp, hot), 3))
-            c.op(key + "/n", [text(Rect(r.x + 20, r.y, 120, r.h), name, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
-            c.op(key + "/v", [text(Rect(r.x + 130, r.y, 110, r.h), "%d C" % round(temp), FONT_L, Theme.TEXT, Theme.SURFACE, LEFT)])
-            bt = Rect(r.x + 250, r.y + 8, r.w - 258, r.h - 16).split_h(4, 8)
+            c.op(key + "/n", [text(Rect(r.x + 20, r.y, 140, r.h), name, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+            c.op(key + "/v", [text(Rect(r.x + 146, r.y, 110, r.h), "%d C" % round(temp), FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
+            bt = Rect(r.x + 262, r.y + 8, r.w - 270, r.h - 16).split_h(4, 8)
             ui.button(c, key + "/m", bt[0], "-5", lambda o=obj, t=target: app.gcode(heater_gcode(o, max(0, t - 5))))
             ui.button(c, key + "/t", bt[1], ("%d C" % target) if target else "Off",
                       lambda o=obj, n=name, l=lo, h=hi: set_target(app, o, n, l, h), active=target > 0)
             ui.button(c, key + "/p", bt[2], "+5", lambda o=obj, t=target, h=hi: app.gcode(heater_gcode(o, min(h, t + 5))))
             ui.button(c, key + "/o", bt[3], "Off", (lambda o=obj: app.gcode(heater_gcode(o, 0))) if target else None)
-        presets = Rect(12, 338, 776, 62).split_h(len(PRESETS) + 1, 10)
+        presets = Rect(CONTENT.x, CONTENT.y + 324, CONTENT.w, 92).split_h(len(PRESETS) + 1, 8)
         for i, (name, n, b, ch) in enumerate(PRESETS):
             ui.button(c, "ctl/pre/%d" % i, presets[i], name, lambda n=n, b=b, ch=ch: self._preset(n, b, ch),
-                      sub="%d / %d" % (n, b), bg=Theme.BG)
-        ui.button(c, "ctl/pre/cool", presets[-1], "Cool down", lambda: cool_down(app), style=ui.GHOST, bg=Theme.BG)
+                      sub="%d/%d" % (n, b), bg=Theme.BG)
+        ui.button(c, "ctl/pre/cool", presets[-1], "Cool", lambda: cool_down(app), style=ui.GHOST, bg=Theme.BG, sub="down")
 
     def _preset(self, nozzle, bed, chamber):
         app = self.app
@@ -399,29 +395,29 @@ class ControlPage(Page):
     # Fans & light
     def fans(self, c):
         app = self.app
-        fans = [("fan", "Part cooling", lambda v: "M106 P0 S%d" % round(v * 255))]
+        fans = [("fan", "Part fan", lambda v: "M106 P0 S%d" % round(v * 255))]
         for name, label in (("sidefan", "Side fan"), ("filterfan", "Filter fan")):
             if app.has("fan_generic " + name):
                 fans.append(("fan_generic " + name, label, lambda v, n=name: "SET_FAN_SPEED FAN=%s SPEED=%.2f" % (n, v)))
-        area = Rect(12, 112, 776, 70 * len(fans) + 10 * (len(fans) - 1))
-        for i, ((obj, name, cmd), r) in enumerate(zip(fans, area.split_v(len(fans), 10))):
+        h = 78
+        area = Rect(CONTENT.x, CONTENT.y + 64, CONTENT.w, h * len(fans) + 8 * (len(fans) - 1))
+        for i, ((obj, name, cmd), r) in enumerate(zip(fans, area.split_v(len(fans), 8))):
             speed = app.get(obj, "speed", 0.0) or 0.0
             key = "ctl/f/%d" % i
             ui.card(c, key, r)
-            c.op(key + "/n", [text(Rect(r.x + 20, r.y, 150, r.h), name, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
-            c.op(key + "/v", [text(Rect(r.x + 170, r.y, 70, r.h), "%d%%" % round(speed * 100), FONT_L, Theme.TEXT, Theme.SURFACE, LEFT)])
-            ui.bar(c, key + "/bar", Rect(r.x + 246, r.y + r.h // 2 - 6, 170, 12), speed, Theme.ACCENT)
-            bt = Rect(r.x + 430, r.y + 8, r.w - 438, r.h - 16).split_h(4, 8)
+            c.op(key + "/n", [text(Rect(r.x + 20, r.y, 170, r.h), name, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+            c.op(key + "/v", [text(Rect(r.x + 180, r.y, 100, r.h), "%d%%" % round(speed * 100), FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
+            ui.bar(c, key + "/bar", Rect(r.x + 286, r.y + r.h // 2 - 7, 140, 14), speed, Theme.ACCENT)
+            bt = Rect(r.x + 442, r.y + 8, r.w - 450, r.h - 16).split_h(3, 8)
             ui.button(c, key + "/m", bt[0], "-10", lambda s=speed, f=cmd: app.gcode(f(max(0.0, round(s - 0.1, 2)))))
             ui.button(c, key + "/p", bt[1], "+10", lambda s=speed, f=cmd: app.gcode(f(min(1.0, round(s + 0.1, 2)))))
-            ui.button(c, key + "/x", bt[2], "Max", lambda f=cmd: app.gcode(f(1.0)))
-            ui.button(c, key + "/o", bt[3], "Off", lambda f=cmd: app.gcode(f(0.0)))
+            ui.button(c, key + "/o", bt[2], "Off", lambda f=cmd: app.gcode(f(0.0)))
         light = app.get("output_pin caselight", "value", None)
         if light is not None:
-            r = Rect(12, area.y + area.h + 10, 776, 70)
+            r = Rect(CONTENT.x, area.y + area.h + 8, CONTENT.w, h)
             ui.card(c, "ctl/light", r)
-            c.op("ctl/light/n", [text(Rect(r.x + 20, r.y, 300, r.h), "Case light", FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
-            ui.toggle(c, "ctl/light/sw", Rect(r.x + r.w - 100, r.y + 17, 76, 36), light > 0,
+            c.op("ctl/light/n", [text(Rect(r.x + 20, r.y, 300, r.h), "Case light", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+            ui.toggle(c, "ctl/light/sw", Rect(r.x + r.w - 110, r.y + (r.h - 40) // 2, 80, 40), light > 0,
                       lambda: app.gcode("SET_PIN PIN=caselight VALUE=%d" % (0 if light > 0 else 1)))
 
 
@@ -454,19 +450,17 @@ class FilesPage(Page):
         self.app.invalidate()
 
     def draw(self, c):
-        app = self.app
-        header = Rect(12, 52, 776, 48)
         count = len(self.files)
         pages = max(1, (count + self.per_page - 1) // self.per_page)
         page = self.offset // self.per_page + 1
-        c.op("files/h", [text(Rect(16, 52, 360, 48), ("Loading..." if self.loading else "%d files, newest first" % count),
-                              FONT_M, Theme.MUTED, Theme.BG, LEFT)])
-        nav = Rect(456, 52, 332, 48).split_h(3, 10)
-        ui.button(c, "files/prev", nav[0], "Prev", (lambda: self._page(-1)) if self.offset > 0 else None, bg=Theme.BG)
-        c.op("files/pg", [text(nav[1], "%d / %d" % (page, pages), FONT_M, Theme.TEXT, Theme.BG, CENTER)])
+        c.op("files/h", [text(Rect(CONTENT.x + 8, CONTENT.y, 300, 52), ("Loading..." if self.loading else "%d files" % count),
+                              FONT_S, Theme.MUTED, Theme.BG, LEFT)])
+        nav = Rect(CONTENT.x + 312, CONTENT.y + 2, 392, 48).split_h(3, 8)
+        ui.button(c, "files/prev", nav[0], "Prev", (lambda: self._page(-1)) if self.offset > 0 else None, bg=Theme.BG, font=FONT_S)
+        c.op("files/pg", [text(nav[1], "%d / %d" % (page, pages), FONT_S, Theme.TEXT, Theme.BG, CENTER)])
         ui.button(c, "files/next", nav[2], "Next", (lambda: self._page(1)) if self.offset + self.per_page < count else None,
-                  bg=Theme.BG)
-        rows = Rect(12, 108, 776, 292).split_v(self.per_page, 8)
+                  bg=Theme.BG, font=FONT_S)
+        rows = Rect(CONTENT.x, CONTENT.y + 60, CONTENT.w, CONTENT.h - 60).split_v(self.per_page, 6)
         for i, r in enumerate(rows):
             index = self.offset + i
             key = "files/r%d" % i
@@ -476,15 +470,15 @@ class FilesPage(Page):
             f = self.files[index]
             pressed = c.pressed == key
             face = Theme.SURFACE2 if pressed else Theme.SURFACE
-            ui.card(c, key, r, face, radius=6)
+            ui.card(c, key, r, face, radius=8)
             path = f.get("path", "")
             name = path.rsplit("/", 1)[-1]
             if name.lower().endswith(".gcode"):
                 name = name[:-6]
-            when = time.strftime("%d %b %H:%M", time.localtime(f.get("modified", 0)))
+            when = time.strftime("%d %b", time.localtime(f.get("modified", 0)))
             size = f.get("size", 0) / 1e6
             c.op(key + "/n", [text(Rect(r.x + 18, r.y, r.w - 220, r.h), name, FONT_M, Theme.TEXT, face, LEFT)])
-            c.op(key + "/m", [text(Rect(r.x + r.w - 200, r.y, 186, r.h), "%s  %.1f MB" % (when, size), FONT_S, Theme.MUTED, face, RIGHT)])
+            c.op(key + "/m", [text(Rect(r.x + r.w - 190, r.y, 176, r.h), "%s  %.1f MB" % (when, size), FONT_S, Theme.MUTED, face, RIGHT)])
             c.hit(key, r, lambda p=path: self.app.open_modal(FileDetails(self.app, p)))
 
     def _page(self, delta: int):
@@ -493,7 +487,7 @@ class FilesPage(Page):
 
 
 class FileDetails(Modal):
-    width, height = 600, 330
+    width, height = 640, 400
 
     def __init__(self, app, path: str):
         super().__init__(app)
@@ -511,23 +505,23 @@ class FileDetails(Modal):
     def draw(self, c):
         app, p, m = self.app, self.panel, self.meta
         name = self.path.rsplit("/", 1)[-1]
-        ui.label(c, "modal/title", Rect(p.x + 24, p.y + 18, p.w - 48, 34), name, FONT_L)
+        ui.label(c, "modal/title", Rect(p.x + 24, p.y + 14, p.w - 48, 44), name, FONT_M)
         facts = [
             ("Print time", fmt_duration(m.get("estimated_time"))),
             ("Filament", ("%.1f m" % (m["filament_total"] / 1000)) if m.get("filament_total") else "--"),
-            ("Layer height", ("%.2f mm" % m["layer_height"]) if m.get("layer_height") else "--"),
+            ("Layer", ("%.2f mm" % m["layer_height"]) if m.get("layer_height") else "--"),
             ("Height", ("%.1f mm" % m["object_height"]) if m.get("object_height") else "--"),
             ("Material", m.get("filament_type") or "--"),
             ("Slicer", m.get("slicer") or "--"),
         ]
         for i, (k, v) in enumerate(facts):
-            cell = Rect(p.x + 24 + (i % 3) * 186, p.y + 70 + (i // 3) * 64, 180, 56)
-            c.op("modal/k%d" % i, [text(cell.row(0, 22), k, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT),
-                                   text(cell.row(24, 28), v, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
-        cancel, go = Rect(p.x + 24, p.y + p.h - 80, p.w - 48, 60).split_h(2, 16)
+            cell = Rect(p.x + 24 + (i % 3) * 198, p.y + 74 + (i // 3) * 96, 192, 84)
+            c.op("modal/k%d" % i, [text(cell.row(0, 32), k, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT),
+                                   text(cell.row(34, 42), v, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
+        cancel, go = Rect(p.x + 24, p.y + p.h - 92, p.w - 48, 68).split_h(2, 16)
         ui.button(c, "modal/cancel", cancel, "Back", self.close)
-        ui.button(c, "modal/print", go, "Print", self._print if not app.printing else None, style=ui.ACCENT,
-                  sub="start now" if not app.printing else "printer busy")
+        ui.button(c, "modal/print", go, "Print" if not app.printing else "Busy", self._print if not app.printing else None,
+                  style=ui.ACCENT)
 
     def _print(self):
         self.close()
@@ -542,7 +536,7 @@ class SystemPage(Page):
     nav = "system"
     allow_offline = True
     brightness = [25, 50, 75, 100]
-    sleep = [0, 5, 10, 30]
+    sleep = [0, 5, 10, 30]  # minutes
 
     def __init__(self, app):
         super().__init__(app)
@@ -560,7 +554,7 @@ class SystemPage(Page):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("10.255.255.255", 1))
-            self.host = "%s  %s" % (socket.gethostname(), s.getsockname()[0])
+            self.host = s.getsockname()[0]
             s.close()
         except OSError:
             self.host = socket.gethostname()
@@ -568,41 +562,41 @@ class SystemPage(Page):
 
     def draw(self, c):
         app = self.app
-        left = Rect(12, 52, 380, 348)
+        left = Rect(CONTENT.x, CONTENT.y, 336, CONTENT.h)
         ui.card(c, "sys/info", left)
         rows = [
-            ("Klipper", "%s  %s" % (app.klippy, (self.info.get("software_version") or "").split("-g")[0])),
-            ("Host", self.host or "..."),
-            ("Display", "TJC 800x480, canvas mode"),
-            ("Box", "Happy Hare, %d gates" % (app.get("mmu", "num_gates", 0) or 0) if app.has("mmu") else "not configured"),
+            ("Klipper", "%s  %s" % (app.klippy, (self.info.get("software_version") or "").split("-")[0])),
+            ("IP address", self.host or "..."),
+            ("Display", "800x480 canvas"),
+            ("Box", "Happy Hare, %d" % (app.get("mmu", "num_gates", 0) or 0) if app.has("mmu") else "not configured"),
         ]
         for i, (k, v) in enumerate(rows):
-            y = left.y + 18 + i * 56
-            c.op("sys/info/k%d" % i, [text(Rect(left.x + 20, y, 340, 20), k.upper(), FONT_S, Theme.MUTED, Theme.SURFACE, LEFT),
-                                      text(Rect(left.x + 20, y + 20, 340, 28), v, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
-        screen = Rect(404, 52, 384, 160)
+            y = left.y + 14 + i * 100
+            c.op("sys/info/k%d" % i, [text(Rect(left.x + 20, y, 296, 30), k.upper(), FONT_S, Theme.MUTED, Theme.SURFACE, LEFT),
+                                      text(Rect(left.x + 20, y + 32, 296, 42), v, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
+        screen = Rect(CONTENT.x + 348, CONTENT.y, CONTENT.w - 348, 206)
         ui.card(c, "sys/screen", screen)
-        c.op("sys/screen/b", [text(Rect(screen.x + 18, screen.y + 10, 200, 22), "BRIGHTNESS", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+        c.op("sys/screen/b", [text(Rect(screen.x + 16, screen.y + 8, 300, 30), "BRIGHTNESS", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
         b = app.settings["brightness"]
-        ui.segmented(c, "sys/screen/bs", Rect(screen.x + 14, screen.y + 34, screen.w - 28, 42), ["%d%%" % v for v in self.brightness],
+        ui.segmented(c, "sys/screen/bs", Rect(screen.x + 12, screen.y + 40, screen.w - 24, 56), ["%d%%" % v for v in self.brightness],
                      self.brightness.index(b) if b in self.brightness else 3, self._brightness)
-        c.op("sys/screen/s", [text(Rect(screen.x + 18, screen.y + 84, 200, 22), "SCREEN OFF AFTER", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+        c.op("sys/screen/s", [text(Rect(screen.x + 16, screen.y + 102, 300, 30), "SCREEN OFF AFTER", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
         s = app.settings["sleep_minutes"]
-        ui.segmented(c, "sys/screen/ss", Rect(screen.x + 14, screen.y + 108, screen.w - 28, 42),
-                     ["Never" if v == 0 else "%d min" % v for v in self.sleep], self.sleep.index(s) if s in self.sleep else 2,
+        ui.segmented(c, "sys/screen/ss", Rect(screen.x + 12, screen.y + 134, screen.w - 24, 56),
+                     ["Off" if v == 0 else "%dm" % v for v in self.sleep], self.sleep.index(s) if s in self.sleep else 2,
                      self._sleep)
-        actions = Rect(404, 224, 384, 176)
-        grid = [r.split_h(2, 10) for r in actions.split_v(3, 10)]
-        ui.button(c, "sys/restart", grid[0][0], "Restart", lambda: app.gcode("RESTART"))
-        ui.button(c, "sys/fw", grid[0][1], "FW restart", lambda: app.spawn(app.call("printer.firmware_restart")))
-        ui.button(c, "sys/motors", grid[1][0], "Motors off", lambda: app.gcode("M84"))
+        actions = Rect(CONTENT.x + 348, CONTENT.y + 216, CONTENT.w - 348, 200)
+        grid = [r.split_h(2, 8) for r in actions.split_v(3, 8)]
+        ui.button(c, "sys/restart", grid[0][0], "Restart", lambda: app.gcode("RESTART"), font=FONT_S)
+        ui.button(c, "sys/fw", grid[0][1], "FW restart", lambda: app.spawn(app.call("printer.firmware_restart")), font=FONT_S)
+        ui.button(c, "sys/motors", grid[1][0], "Motors off", lambda: app.gcode("M84"), font=FONT_S)
         ui.button(c, "sys/reboot", grid[1][1], "Reboot", lambda: confirm(
             app, "Reboot printer", "Restarts the printer's computer. Printing is not possible until it is back.",
-            "Reboot", lambda: app.spawn(app.call("machine.reboot"))))
+            "Reboot", lambda: app.spawn(app.call("machine.reboot"))), font=FONT_S)
         ui.button(c, "sys/estop", grid[2][0], "E-stop", lambda: confirm(
             app, "Emergency stop", "Stops all motors and heaters at once.", "Stop now",
-            lambda: app.spawn(app.call("printer.emergency_stop"))), style=ui.DANGER)
-        ui.button(c, "sys/screenoff", grid[2][1], "Screen off", self._screen_off, style=ui.GHOST)
+            lambda: app.spawn(app.call("printer.emergency_stop"))), style=ui.DANGER, font=FONT_S)
+        ui.button(c, "sys/screenoff", grid[2][1], "Screen off", self._screen_off, style=ui.GHOST, font=FONT_S)
 
     def _brightness(self, i):
         self.app.settings["brightness"] = self.brightness[i]
@@ -625,19 +619,19 @@ class OfflinePage(Page):
 
     def draw(self, c):
         app = self.app
-        r = Rect(12, 52, 776, 348)
+        r = CONTENT
         ui.card(c, "off/card", r)
         starting = app.klippy in ("startup", "connecting")
         headline = "Starting up..." if starting else ("Klipper is not ready" if app.klippy != "disconnected" else "Moonraker is not reachable")
-        c.op("off/card/badge", [disc(r.x + 60, r.y + 60, 32, Theme.WARN if starting else Theme.ERR)] +
-             [text(Rect(r.x + 28, r.y + 28, 64, 64), "..." if starting else "!", FONT_L, Theme.BG, Theme.WARN if starting else Theme.ERR, CENTER)])
-        c.op("off/card/h", [text(Rect(r.x + 112, r.y + 30, 600, 34), headline, FONT_L, Theme.TEXT, Theme.SURFACE, LEFT)])
-        c.op("off/card/s", [text(Rect(r.x + 112, r.y + 64, 600, 26), "State: %s" % app.klippy, FONT_M, Theme.MUTED, Theme.SURFACE, LEFT)])
-        for i, ln in enumerate(wrap(app.klippy_message or "", 76, 5)):
-            c.op("off/card/m%d" % i, [text(Rect(r.x + 28, r.y + 116 + i * 26, 720, 24), ln, FONT_S, Theme.TEXT, Theme.SURFACE, LEFT)],
-                 [fill(Rect(r.x + 28, r.y + 116 + i * 26, 720, 24), Theme.SURFACE)])
-        row = Rect(r.x + 28, r.y + r.h - 84, r.w - 56, 60).split_h(3, 14)
-        ui.button(c, "off/restart", row[0], "Restart", lambda: app.spawn(app.call("printer.restart")), sub="Klipper")
+        badge = Theme.WARN if starting else Theme.ERR
+        c.op("off/card/badge", [disc(r.x + 60, r.y + 62, 34, badge)] +
+             [text(Rect(r.x + 40, r.y + 42, 40, 44), "..." if starting else "!", FONT_M, Theme.BG, badge, CENTER)])
+        c.op("off/card/h", [text(Rect(r.x + 112, r.y + 24, 570, 44), headline, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
+        c.op("off/card/s", [text(Rect(r.x + 112, r.y + 68, 570, 32), "State: %s" % app.klippy, FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+        ui.wrapped(c, "off/card/m", Rect(r.x + 24, r.y + 120, r.w - 48, 150), app.klippy_message or "", FONT_S, Theme.TEXT,
+                   Theme.SURFACE, 5, 30)
+        row = Rect(r.x + 20, r.y + r.h - 88, r.w - 40, 68).split_h(3, 12)
+        ui.button(c, "off/restart", row[0], "Restart", lambda: app.spawn(app.call("printer.restart")), font=FONT_S)
         ui.button(c, "off/fw", row[1], "FW restart", lambda: app.spawn(app.call("printer.firmware_restart")), style=ui.ACCENT,
-                  sub="all MCUs")
-        ui.button(c, "off/sys", row[2], "System", lambda: app.go_nav("system"), style=ui.GHOST)
+                  font=FONT_S)
+        ui.button(c, "off/sys", row[2], "System", lambda: app.go_nav("system"), style=ui.GHOST, font=FONT_S)

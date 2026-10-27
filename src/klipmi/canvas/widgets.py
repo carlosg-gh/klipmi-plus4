@@ -8,7 +8,7 @@ that is unique on the page. Buttons look pressed while `canvas.pressed` is their
 from typing import Callable, Optional, Sequence
 
 from .gfx import (CENTER, FONT_L, FONT_M, FONT_S, LEFT, RIGHT, Canvas, Rect, Theme, big_font, big_width, clean,
-                  disc, fill, icon, mix, rounded, text, text_width)
+                  disc, fill, icon, mix, rounded, text, text_width, wrap_px)
 
 NORMAL, ACCENT, DANGER, GHOST, OK = "normal", "accent", "danger", "ghost", "ok"
 
@@ -41,9 +41,12 @@ def button(c: Canvas, key: str, r: Rect, caption: str, action: Optional[Callable
         face, ink = mix(face, bg, 0.6), Theme.FAINT
     elif c.pressed == key:
         face = mix(face, Theme.TEXT, 0.25)
-    inner = r.inset(radius // 2, 2)
+    inner = r.inset(min(radius // 2, 6), 2)
     cmds = rounded(r, face, radius, bg)
-    if icon_name:
+    if icon_name and not caption:  # icon-only button (the sidebar)
+        size = 32 if min(r.w, r.h) >= 44 else 24
+        cmds.append(icon(icon_name, r.x + (r.w - size) // 2, r.y + (r.h - size) // 2, size, face))
+    elif icon_name:
         cw = text_width(caption, font)
         x0 = inner.x + max(0, (inner.w - cw - 32) // 2)
         cmds.append(icon(icon_name, x0, r.y + (r.h - 24) // 2, 24, face))
@@ -57,6 +60,16 @@ def button(c: Canvas, key: str, r: Rect, caption: str, action: Optional[Callable
     c.op(key, cmds, [fill(r, bg)])
     if action is not None:
         c.hit(key, r, action)
+
+
+def wrapped(c: Canvas, key: str, r: Rect, s: str, font: int = FONT_S, fg: int = Theme.MUTED, bg: int = Theme.SURFACE,
+            max_lines: int = 3, line_h: int = 0, align: int = LEFT):
+    """A paragraph: one part per line, word-wrapped to the width of `r`."""
+    line_h = line_h or (34 if font == FONT_M else 30)
+    lines = wrap_px(s, r.w, font, max_lines)
+    for i in range(max_lines):
+        box = Rect(r.x, r.y + i * line_h, r.w, line_h)
+        c.op("%s/%d" % (key, i), [text(box, lines[i] if i < len(lines) else "", font, fg, bg, align)], [fill(box, bg)])
 
 
 def chip(c: Canvas, key: str, r: Rect, s: str, color: int, bg: int = Theme.SURFACE, ink: int = Theme.BG):

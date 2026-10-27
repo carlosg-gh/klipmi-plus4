@@ -2,8 +2,8 @@
 """The optional Box page: Happy Hare / Bunny-Box gates, box climate, load and unload."""
 
 from klipmi.canvas import widgets as ui
-from klipmi.canvas.app import App, Modal, Page
-from klipmi.canvas.gfx import (CENTER, FONT_L, FONT_M, FONT_S, LEFT, RIGHT, Rect, Theme, fill, mix, rounded, text,
+from klipmi.canvas.app import CONTENT, App, Modal, Page
+from klipmi.canvas.gfx import (CENTER, FONT_M, FONT_S, LEFT, RIGHT, Rect, Theme, fill, mix, rounded, text,
                                unrgb)
 from klipmi.features import mmu
 
@@ -15,7 +15,7 @@ POSITIONS = {
     8: "at the toolhead sensor", 9: "in the extruder", 10: "loaded to the nozzle",
 }
 STATUS = {
-    mmu.GATE_UNKNOWN: ("Unknown", Theme.WARN), mmu.GATE_EMPTY: ("Empty", Theme.FAINT),
+    mmu.GATE_UNKNOWN: ("Not set", Theme.WARN), mmu.GATE_EMPTY: ("Empty", Theme.FAINT),
     mmu.GATE_AVAILABLE: ("Ready", Theme.OK), mmu.GATE_BUFFER: ("Buffer", Theme.ACCENT),
 }
 MATERIALS = ["PLA", "PETG", "ABS", "ASA", "TPU", "PA"]
@@ -32,11 +32,11 @@ def box_state(app: App):
 def mmu_summary(app: App) -> str:
     box = box_state(app)
     if box is None:
-        return "not configured"
+        return "none"
     ready = sum(1 for s in box.slots if s.available)
     if box.filament == "Loaded" and box.gate >= 0:
-        return "gate %d loaded" % (box.gate + 1)
-    return "%d of %d ready" % (ready, len(box.slots))
+        return "gate %d" % (box.gate + 1)
+    return "%d/%d ready" % (ready, len(box.slots))
 
 
 def ink_for(color: int) -> int:
@@ -61,40 +61,41 @@ class BoxPage(Page):
         app = self.app
         box = box_state(app)
         if box is None:
-            ui.card(c, "box/none", Rect(12, 52, 776, 348))
-            c.op("box/none/t", [text(Rect(40, 180, 720, 40), "No Happy Hare box is configured.", FONT_L, Theme.MUTED, Theme.SURFACE, CENTER)])
+            ui.card(c, "box/none", CONTENT)
+            c.op("box/none/t", [text(Rect(CONTENT.x + 20, CONTENT.y + 170, CONTENT.w - 40, 50), "No Happy Hare box is configured.",
+                                     FONT_M, Theme.MUTED, Theme.SURFACE, CENTER)])
             return
-        slots = Rect(12, 52, 580, 212).split_h(max(1, len(box.slots)), 10)
+        slots = Rect(CONTENT.x, CONTENT.y, 536, 196).split_h(max(1, len(box.slots)), 8)
         for slot, r in zip(box.slots, slots):
             self.slot(c, box, slot, r)
-        self.climate(c, box, Rect(604, 52, 184, 212))
-        self.status(c, box, Rect(12, 274, 376, 126))
-        self.actions(c, box, Rect(400, 274, 388, 126))
+        self.climate(c, box, Rect(CONTENT.x + 544, CONTENT.y, 160, 196))
+        self.status(c, box, Rect(CONTENT.x, CONTENT.y + 206, 344, 210))
+        self.actions(c, box, Rect(CONTENT.x + 356, CONTENT.y + 206, 348, 210))
 
     def slot(self, c, box: mmu.Box, slot: mmu.Slot, r: Rect):
-        app = self.app
         key = "box/s%d" % slot.index
         selected = self.selected == slot.index
         ring = Theme.ACCENT if selected else Theme.BG
         face = mix(Theme.SURFACE, Theme.TEXT, 0.06) if c.pressed == key else Theme.SURFACE
-        c.op(key, rounded(r, ring, 10) + rounded(r.inset(3), face, 8))
+        c.op(key, rounded(r, ring, 12) + rounded(r.inset(3), face, 10))
         known = slot.available and slot.color
         swatch_color = mmu.rgb565(slot.color) if known else (Theme.SURFACE2 if slot.status != mmu.GATE_EMPTY else Theme.BG)
-        sw = Rect(r.x + 14, r.y + 14, r.w - 28, 92)
-        swatch = rounded(sw, swatch_color, 6)
+        sw = Rect(r.x + 10, r.y + 10, r.w - 20, 84)
+        swatch = rounded(sw, swatch_color, 8)
         if slot.status == mmu.GATE_EMPTY:
-            swatch = rounded(sw, Theme.RAISED, 6) + rounded(sw.inset(3), Theme.BG, 4)
+            swatch = rounded(sw, Theme.RAISED, 8) + rounded(sw.inset(3), Theme.BG, 6)
         label = slot.material or ("?" if slot.status == mmu.GATE_UNKNOWN else ("" if slot.status == mmu.GATE_EMPTY else "--"))
-        c.op(key + "/sw", swatch + [text(sw.inset(8), label, FONT_L, ink_for(swatch_color), swatch_color if slot.status != mmu.GATE_EMPTY else Theme.BG, CENTER)])
+        c.op(key + "/sw", swatch + [text(sw.inset(4), label, FONT_M, ink_for(swatch_color),
+                                         swatch_color if slot.status != mmu.GATE_EMPTY else Theme.BG, CENTER)])
         status, color = STATUS.get(slot.status, ("?", Theme.MUTED))
-        c.op(key + "/g", [text(Rect(r.x + 14, r.y + 114, r.w - 28, 22), "GATE %d" % (slot.index + 1), FONT_S, Theme.MUTED, face, LEFT)])
-        c.op(key + "/st", [text(Rect(r.x + 14, r.y + 136, r.w - 28, 26), status, FONT_M, color, face, LEFT)])
+        c.op(key + "/g", [text(Rect(r.x + 12, r.y + 98, r.w - 24, 30), "GATE %d" % (slot.index + 1), FONT_S, Theme.MUTED, face, LEFT)])
+        c.op(key + "/st", [text(Rect(r.x + 12, r.y + 126, r.w - 24, 30), status, FONT_S, color, face, LEFT)])
         loaded = box.filament == "Loaded" and box.gate == slot.index
         if loaded:
-            ui.chip(c, key + "/chip", Rect(r.x + 14, r.y + r.h - 38, r.w - 28, 26), "IN USE", Theme.ACCENT, face)
+            ui.chip(c, key + "/chip", Rect(r.x + 12, r.y + r.h - 40, r.w - 24, 30), "IN USE", Theme.ACCENT, face)
         else:
-            c.op(key + "/chip", [text(Rect(r.x + 14, r.y + r.h - 40, r.w - 28, 28),
-                                      slot.name or ("tap again to edit" if selected else ""), FONT_S, Theme.FAINT, face, LEFT)])
+            c.op(key + "/chip", [text(Rect(r.x + 12, r.y + r.h - 42, r.w - 24, 32),
+                                      slot.name or ("edit..." if selected else ""), FONT_S, Theme.FAINT, face, LEFT)])
         c.hit(key, r, lambda i=slot.index: self.tap(i))
 
     def tap(self, gate: int):
@@ -107,21 +108,20 @@ class BoxPage(Page):
     def climate(self, c, box: mmu.Box, r: Rect):
         app = self.app
         ui.card(c, "box/clim", r)
-        c.op("box/clim/l", [text(Rect(r.x + 16, r.y + 10, r.w - 32, 22), "BOX CLIMATE", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
+        c.op("box/clim/l", [text(Rect(r.x + 14, r.y + 4, r.w - 28, 28), "CLIMATE", FONT_S, Theme.MUTED, Theme.SURFACE, LEFT)])
         temp = box.temperature if box.temperature is not None else 0
-        ui.big_text(c, "box/clim/t", r.x + 16, r.y + 38, "%d" % round(temp), 40, Theme.TEXT, Theme.SURFACE)
-        c.op("box/clim/u", [text(Rect(r.x + 110, r.y + 52, 60, 26), "C", FONT_L, Theme.MUTED, Theme.SURFACE, LEFT)])
+        ui.big_text(c, "box/clim/t", r.x + 14, r.y + 32, "%d C" % round(temp), 52, Theme.TEXT, Theme.SURFACE)
         target = box.target or 0
-        c.op("box/clim/tg", [text(Rect(r.x + 16, r.y + 86, r.w - 32, 22), ("heating to %d C" % target) if target else "heater off",
+        c.op("box/clim/tg", [text(Rect(r.x + 14, r.y + 86, r.w - 28, 26), ("to %d C" % target) if target else "heater off",
                                   FONT_S, Theme.WARN if target else Theme.FAINT, Theme.SURFACE, LEFT)])
-        humid = "%d%% humidity" % round(box.humidity) if box.humidity is not None else "humidity n/a"
-        c.op("box/clim/h", [text(Rect(r.x + 16, r.y + 110, r.w - 32, 24), humid, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
+        humid = "%d%% RH" % round(box.humidity) if box.humidity is not None else "RH n/a"
+        c.op("box/clim/h", [text(Rect(r.x + 14, r.y + 112, r.w - 28, 26), humid, FONT_S, Theme.TEXT, Theme.SURFACE, LEFT)])
         if box.drying:
-            ui.button(c, "box/clim/dry", Rect(r.x + 14, r.y + r.h - 64, r.w - 28, 50), "Stop drying",
-                      lambda: app.gcode("MMU_HEATER STOP=1"), style=ui.DANGER, sub="drying now")
+            ui.button(c, "box/clim/dry", Rect(r.x + 10, r.y + r.h - 54, r.w - 20, 46), "Stop",
+                      lambda: app.gcode("MMU_HEATER STOP=1"), style=ui.DANGER, font=FONT_S)
         else:
-            ui.button(c, "box/clim/dry", Rect(r.x + 14, r.y + r.h - 64, r.w - 28, 50), "Dry filament", lambda: self.dry(),
-                      style=ui.NORMAL, sub="choose material")
+            ui.button(c, "box/clim/dry", Rect(r.x + 10, r.y + r.h - 54, r.w - 20, 46), "Dry", lambda: self.dry(),
+                      style=ui.NORMAL, font=FONT_S)
 
     def dry(self):
         app = self.app
@@ -131,7 +131,7 @@ class BoxPage(Page):
             app.toast("Drying at %d C for %d h" % (temp, minutes // 60))
 
         options = [(name, "%d C, %d h" % (t, m // 60), (lambda t=t, m=m: start(t, m))) for name, t, m in DRYING]
-        options.append(("Custom", "temperature, time", lambda: keypad(
+        options.append(("Custom", "temp and time", lambda: keypad(
             app, "Drying temperature", 45, 30, 65, lambda t: keypad(app, "Drying time (hours)", 4, 1, 24,
                                                                     lambda h: start(t, int(h * 60)), unit="h"), unit="C")))
         choose(app, "Dry filament", options, "The box heater runs with the lid closed; it stops by itself.")
@@ -141,16 +141,17 @@ class BoxPage(Page):
         key = "box/stat" + ("E" if box.errored else "N")
         if box.errored:
             ui.card(c, key, r, Theme.ERR_DIM)
-            c.op(key + "/h", [text(Rect(r.x + 16, r.y + 10, r.w - 32, 26), "Box needs attention", FONT_M, Theme.TEXT, Theme.ERR_DIM, LEFT)])
-            c.op(key + "/r", [text(Rect(r.x + 16, r.y + 38, r.w - 32, 22), box.reason or "Happy Hare paused the print", FONT_S, Theme.TEXT, Theme.ERR_DIM, LEFT)])
-            row = Rect(r.x + 12, r.y + r.h - 58, r.w - 24, 46).split_h(3, 8)
-            ui.button(c, key + "/u", row[0], "Unlock", lambda: app.gcode("MMU_UNLOCK"), bg=Theme.ERR_DIM)
-            ui.button(c, key + "/rc", row[1], "Recover", lambda: app.gcode("MMU_RECOVER"), bg=Theme.ERR_DIM)
-            ui.button(c, key + "/rs", row[2], "Resume", lambda: app.gcode("RESUME"), style=ui.ACCENT, bg=Theme.ERR_DIM)
+            c.op(key + "/h", [text(Rect(r.x + 16, r.y + 8, r.w - 32, 40), "Box needs attention", FONT_S, Theme.TEXT, Theme.ERR_DIM, LEFT)])
+            ui.wrapped(c, key + "/r", Rect(r.x + 16, r.y + 50, r.w - 32, 90), box.reason or "Happy Hare paused the print",
+                       FONT_S, Theme.TEXT, Theme.ERR_DIM, 3, 30)
+            row = Rect(r.x + 10, r.y + r.h - 62, r.w - 20, 52).split_h(3, 8)
+            ui.button(c, key + "/u", row[0], "Unlock", lambda: app.gcode("MMU_UNLOCK"), bg=Theme.ERR_DIM, font=FONT_S)
+            ui.button(c, key + "/rc", row[1], "Recover", lambda: app.gcode("MMU_RECOVER"), bg=Theme.ERR_DIM, font=FONT_S)
+            ui.button(c, key + "/rs", row[2], "Resume", lambda: app.gcode("RESUME"), style=ui.ACCENT, bg=Theme.ERR_DIM, font=FONT_S)
             return
         ui.card(c, key, r)
         busy = box.busy
-        c.op(key + "/a", [text(Rect(r.x + 16, r.y + 12, r.w - 32, 30), box.action if busy else "Idle", FONT_L,
+        c.op(key + "/a", [text(Rect(r.x + 16, r.y + 8, r.w - 32, 44), box.action if busy else "Idle", FONT_M,
                                Theme.ACCENT if busy else Theme.TEXT, Theme.SURFACE, LEFT)])
         if box.filament == "Loaded" and box.gate >= 0:
             fil = "Gate %d is loaded" % (box.gate + 1)
@@ -158,36 +159,39 @@ class BoxPage(Page):
             fil = "Nothing loaded"
         else:
             fil = "Filament state unknown"
-        c.op(key + "/f", [text(Rect(r.x + 16, r.y + 50, r.w - 32, 26), fil, FONT_M, Theme.TEXT, Theme.SURFACE, LEFT)])
+        c.op(key + "/f", [text(Rect(r.x + 16, r.y + 56, r.w - 32, 32), fil, FONT_S, Theme.TEXT, Theme.SURFACE, LEFT)])
         if box.enabled:
-            line, color = "Filament " + POSITIONS.get(box.filamentPos, "?"), Theme.MUTED
+            line, color = POSITIONS.get(box.filamentPos, "?"), Theme.MUTED
         else:
-            line, color = "Happy Hare is disabled (More > Enable)", Theme.WARN
-        c.op(key + "/p", [text(Rect(r.x + 16, r.y + 80, r.w - 32, 22), line, FONT_S, color, Theme.SURFACE, LEFT)])
+            line, color = "Happy Hare is disabled", Theme.WARN
+        c.op(key + "/p", [text(Rect(r.x + 16, r.y + 90, r.w - 32, 32), line, FONT_S, color, Theme.SURFACE, LEFT)])
+        gate = self.selected
+        c.op(key + "/sel", [text(Rect(r.x + 16, r.y + 148, r.w - 32, 40),
+                                 ("Selected: gate %d" % (gate + 1)) if gate >= 0 else "Pick a gate", FONT_S,
+                                 Theme.ACCENT if gate >= 0 else Theme.FAINT, Theme.SURFACE, LEFT)])
 
     def actions(self, c, box: mmu.Box, r: Rect):
         app = self.app
         idle = not app.printing and not box.busy and box.enabled
         gate = self.selected
         rows = r.split_v(2, 10)
-        top, bottom = rows[0].split_h(3, 10), rows[1].split_h(3, 10)
+        top, bottom = rows[0].split_h(3, 8), rows[1].split_h(3, 8)
 
         def run(touch):
             script = mmu.gcode(touch, gate, box)
             if script:
                 app.gcode(script)
 
-        name = ("gate %d" % (gate + 1)) if gate >= 0 else "pick a gate"
-        ui.button(c, "box/act/load", top[0], "Load", (lambda: run(mmu.LOAD)) if idle and gate >= 0 else None, style=ui.ACCENT, sub=name)
+        ui.button(c, "box/act/load", top[0], "Load", (lambda: run(mmu.LOAD)) if idle and gate >= 0 else None, style=ui.ACCENT, font=FONT_S)
         ui.button(c, "box/act/unload", top[1], "Unload", (lambda: run(mmu.UNLOAD)) if idle and box.filament != "Unloaded" else None,
-                  sub="back to its gate")
-        ui.button(c, "box/act/eject", top[2], "Eject", (lambda: run(mmu.EJECT)) if idle and gate >= 0 else None, sub=name)
+                  font=FONT_S)
+        ui.button(c, "box/act/eject", top[2], "Eject", (lambda: run(mmu.EJECT)) if idle and gate >= 0 else None, font=FONT_S)
         ui.button(c, "box/act/check", bottom[0], "Check", (lambda: confirm(
             app, "Check gates", "Happy Hare checks every gate for filament. It may move each filament a short way.",
-            "Check gates", lambda: app.gcode("MMU_CHECK_GATE ALL=1"), danger=False)) if idle else None)
+            "Check gates", lambda: app.gcode("MMU_CHECK_GATE ALL=1"), danger=False)) if idle else None, font=FONT_S)
         ui.button(c, "box/act/preload", bottom[1], "Preload", (lambda: app.gcode("MMU_PRELOAD GATE=%d" % gate)) if idle and gate >= 0 else None,
-                  sub=name)
-        ui.button(c, "box/act/more", bottom[2], "More", lambda: self.more(box), style=ui.GHOST)
+                  font=FONT_S)
+        ui.button(c, "box/act/more", bottom[2], "More", lambda: self.more(box), style=ui.GHOST, font=FONT_S)
 
     def more(self, box: mmu.Box):
         app = self.app
@@ -202,7 +206,7 @@ class BoxPage(Page):
 class SlotEditor(Modal):
     """Set a gate's material and colour (MMU_GATE_MAP)."""
 
-    width, height = 640, 380
+    width, height = 680, 420
 
     def __init__(self, app: App, gate: int):
         super().__init__(app)
@@ -214,21 +218,22 @@ class SlotEditor(Modal):
 
     def draw(self, c):
         p = self.panel
-        ui.label(c, "modal/title", Rect(p.x + 24, p.y + 16, p.w - 48, 34), "Gate %d" % (self.gate + 1), FONT_L)
-        ui.segmented(c, "modal/mat", Rect(p.x + 20, p.y + 60, p.w - 40, 48), MATERIALS,
+        ui.label(c, "modal/title", Rect(p.x + 24, p.y + 10, p.w - 48, 44),
+                 "Gate %d: %s, %s" % (self.gate + 1, self.material, self._name()), FONT_M)
+        ui.segmented(c, "modal/mat", Rect(p.x + 20, p.y + 62, p.w - 40, 56), MATERIALS,
                      MATERIALS.index(self.material), self._material)
-        grid = Rect(p.x + 20, p.y + 122, p.w - 40, 150)
+        grid = Rect(p.x + 20, p.y + 130, p.w - 40, 190)
         for i, ((hexcolor, name), cell) in enumerate(zip(PALETTE, [r for row in grid.split_v(2, 10) for r in row.split_h(6, 10)])):
             color = mmu.rgb565(hexcolor)
             key = "modal/c%d" % i
             ring = Theme.ACCENT if hexcolor == self.color else Theme.SURFACE
-            c.op(key, rounded(cell, ring, 8) + rounded(cell.inset(4), color, 5) +
-                 [text(cell.inset(8), name, FONT_S, ink_for(color), color, CENTER)])
+            c.op(key, rounded(cell, ring, 10) + rounded(cell.inset(4), color, 7) +
+                 [text(cell.inset(6), name, FONT_S, ink_for(color), color, CENTER)])
             c.hit(key, cell, lambda h=hexcolor: self._color(h))
-        row = Rect(p.x + 20, p.y + p.h - 76, p.w - 40, 58).split_h(3, 12)
+        row = Rect(p.x + 20, p.y + p.h - 84, p.w - 40, 64).split_h(3, 12)
         ui.button(c, "modal/cancel", row[0], "Cancel", self.close)
-        ui.button(c, "modal/clear", row[1], "Clear", self._clear, style=ui.GHOST, sub="forget filament")
-        ui.button(c, "modal/save", row[2], "Save", self._save, style=ui.ACCENT, sub="%s, %s" % (self.material, self._name()))
+        ui.button(c, "modal/clear", row[1], "Clear", self._clear, style=ui.GHOST)
+        ui.button(c, "modal/save", row[2], "Save", self._save, style=ui.ACCENT)
 
     def _name(self):
         return dict(PALETTE).get(self.color, "#" + self.color)
