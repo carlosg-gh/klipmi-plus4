@@ -159,3 +159,10 @@ cython_debug/
 writings.md
 *.HMI
 *.tft
+
+# Our own Plus 4 canvas HMI project and its build output are tracked
+!hmi/plus4-canvas/*.HMI
+!hmi/plus4-canvas/*.tft
+# Inter download (SIL OFL, not redistributed here): fetch Inter-4.0.zip from github.com/rsms/inter
+hmi/plus4-canvas/assets/inter/
+hmi/plus4-canvas/assets/inter-dl/

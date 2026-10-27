@@ -1,0 +1,112 @@
+{
+ "icons": [
+  "nozzle",
+  "bed",
+  "chamber",
+  "fan",
+  "light",
+  "spool",
+  "home",
+  "control",
+  "files",
+  "box",
+  "gear",
+  "play",
+  "pause",
+  "stop",
+  "up",
+  "down",
+  "left",
+  "right",
+  "check",
+  "warning"
+ ],
+ "icon_sizes": [
+  24,
+  32
+ ],
+ "icon_bgs": [
+  "bg",
+  "surface",
+  "surface2",
+  "raised",
+  "accent",
+  "accent_dim"
+ ],
+ "radii": [
+  4,
+  6,
+  8,
+  10,
+  12,
+  16,
+  20,
+  24
+ ],
+ "corner_pairs": [
+  [
+   "surface",
+   "bg"
+  ],
+  [
+   "surface2",
+   "surface"
+  ],
+  [
+   "raised",
+   "surface"
+  ],
+  [
+   "surface2",
+   "bg"
+  ],
+  [
+   "raised",
+   "bg"
+  ],
+  [
+   "accent",
+   "bg"
+  ],
+  [
+   "accent",
+   "surface"
+  ],
+  [
+   "accent_dim",
+   "surface"
+  ],
+  [
+   "err_dim",
+   "surface"
+  ],
+  [
+   "bg",
+   "surface"
+  ]
+ ],
+ "files": {
+  "ic24_bg": 7099,
+  "ic24_surface": 7170,
+  "ic24_surface2": 7121,
+  "ic24_raised": 7082,
+  "ic24_accent": 6965,
+  "ic24_accent_dim": 7272,
+  "ic32_bg": 11172,
+  "ic32_surface": 11181,
+  "ic32_surface2": 11125,
+  "ic32_raised": 11246,
+  "ic32_accent": 11142,
+  "ic32_accent_dim": 11433,
+  "cr_surface_bg": 3977,
+  "cr_surface2_surface": 4028,
+  "cr_raised_surface": 4215,
+  "cr_surface2_bg": 4188,
+  "cr_raised_bg": 4237,
+  "cr_accent_bg": 4608,
+  "cr_accent_surface": 4676,
+  "cr_accent_dim_surface": 4463,
+  "cr_err_dim_surface": 4115,
+  "cr_bg_surface": 3917
+ }
+}
