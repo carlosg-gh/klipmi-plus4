@@ -126,28 +126,29 @@ class RenderTest(unittest.TestCase):
     def test_idle_box(self):
         box = mmu.parse(fixture())
         box.slots[1].color = "ff0000"
-        box.slots[1].material = "PETG"
         cmds = mmu_plus4.render(box, selected=1)
         self.assertIn("vis p6,0", cmds)
         self.assertIn("vis p7,1", cmds)  # gate 1 -> second slot
-        self.assertIn('t6.txt="PET"', cmds)
-        self.assertIn("t6.pco=%d" % 0xF800, cmds)
-        self.assertIn('t5.txt="OK"', cmds)
+        self.assertIn("vis t6,1", cmds)
+        self.assertIn("t6.bco=%d" % 0xF800, cmds)
+        self.assertIn("t5.bco=%d" % mmu_plus4.UNKNOWN_COLOR, cmds)  # no colour known: grey
+        self.assertIn('t5.txt=""', cmds)
         self.assertIn('t17.txt="%d"' % round(box.temperature), cmds)
         self.assertIn('t18.txt="50"', cmds)
         self.assertIn('t26.txt="--"', cmds)
         self.assertIn("t16.pic=367", cmds)
         self.assertFalse([c for c in cmds if c.startswith("t3.txt")])
 
-    def test_no_commands_for_the_external_holder_text(self):
+    def test_external_holder_is_left_alone(self):
         cmds = mmu_plus4.render(mmu.parse(fixture()), selected=mmu.BYPASS)
         self.assertIn("vis p5,1", cmds)
-        self.assertFalse([c for c in cmds if c.startswith("t1.")])
+        self.assertFalse([c for c in cmds if c.startswith(("t1.", "vis t1,"))])
 
     def test_empty_and_unknown_gates(self):
         box = mmu.parse({"mmu": {"num_gates": 4, "gate_status": [0, -1, 1, 1]}})
         cmds = mmu_plus4.render(box, selected=mmu.UNKNOWN)
-        self.assertIn('t5.txt="-"', cmds)
+        self.assertIn("vis t5,0", cmds)  # empty gate: no spool drawn
+        self.assertIn("vis t6,1", cmds)
         self.assertIn('t6.txt="?"', cmds)
 
     def test_busy_and_error_text(self):

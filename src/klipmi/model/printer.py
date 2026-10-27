@@ -144,7 +144,9 @@ class Printer(MoonrakerListener):
 
     async def __subscribe(self):
         await self.__discoverObjects()
-        await self.client.call_method("printer.objects.subscribe", objects=self.objects)
+        result = await self.client.call_method("printer.objects.subscribe", objects=self.objects)
+        # Updates only carry changed fields, so seed the full state from the reply
+        updateNestedDict(self.status, result.get("status", {}))
 
     async def __updateKlippyStatus(self):
         status = await self.client.get_klipper_status()

@@ -52,6 +52,15 @@ class MainPage(Plus4Page):
     async def init(self):
         await self.onPrinterStatusUpdate(self.state.printer.status)
 
+    async def onDisplayEvent(self, type: EventType, data):
+        if type != EventType.TOUCH:
+            return
+        # Temporary entry point until the stock tools page is wired up: Tools opens the box page
+        if data.component_id == NAV_TOOLS and mmu.parse(self.state.printer.status) is not None:
+            self.changePage(BoxPage)
+        else:
+            logging.info("main: touch id %d (unhandled)" % data.component_id)
+
     async def onPrinterStatusUpdate(self, data: dict):
         display, timeout = self.state.display, self.state.options.timeout
         for comp, heater in (("n0", "extruder"), ("n1", "heater_bed"), ("n2", "heater_generic chamber")):
@@ -59,10 +68,6 @@ class MainPage(Plus4Page):
             if temperature is not None:
                 await display.set(comp + ".val", int(temperature), timeout)
         await display.set("t3.txt", data.get("print_stats", {}).get("filename", ""), timeout)
-
-    async def onDisplayEvent(self, type: EventType, data):
-        if type == EventType.TOUCH:
-            logging.info("main: touch id %d (unhandled)" % data.component_id)
 
 
 class BoxPage(Plus4Page):
@@ -96,7 +101,7 @@ class BoxPage(Plus4Page):
         if touch in mmu.COLUMNS:
             self.selected = mmu.COLUMNS[touch]
             await self.render()
-        elif touch == mmu.EXIT:
+        elif touch in (mmu.EXIT, NAV_HOME):
             self.changePage(MainPage)
         else:
             script = mmu.gcode(touch, self.selected, self.box)

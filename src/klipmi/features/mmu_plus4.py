@@ -6,20 +6,24 @@ from typing import List
 from klipmi.features import mmu
 
 # Per column: external holder first, then the box slots 1A..4A
-LABELS = ["t1", "t5", "t6", "t13", "t14"]  # state text, "?" by default
+# Per column: external holder first, then the box slots 1A..4A.
+# The HMI draws each filament as a solid-colour text block over the spool icon: it is
+# hidden at page load, `bco` is the filament colour and the text "?" means unknown.
+LABELS = ["t1", "t5", "t6", "t13", "t14"]
 FRAMES = ["p5", "p6", "p7", "p8", "p9"]  # selection frame pictures
 GATES = [mmu.BYPASS, 0, 1, 2, 3]
 
+UNKNOWN_COLOR = 16904  # the HMI's own grey for a spool without a known colour
 HEAT_ICON = {False: 366, True: 367}  # t16.pic, from the HMI's own comment
-TEXT_MAX = 3  # the state labels are 57 px wide
 
 
-def slotText(slot: mmu.Slot) -> str:
-    if slot.status == mmu.GATE_UNKNOWN:
-        return "?"
+def slotCommands(label: str, slot: mmu.Slot) -> List[str]:
     if slot.status == mmu.GATE_EMPTY:
-        return "-"
-    return (slot.material or "OK")[:TEXT_MAX]
+        return ["vis %s,0" % label]
+    if slot.status == mmu.GATE_UNKNOWN:
+        return ["vis %s,1" % label, "%s.bco=%d" % (label, UNKNOWN_COLOR), '%s.txt="?"' % label]
+    color = mmu.rgb565(slot.color) if slot.color else UNKNOWN_COLOR
+    return ["vis %s,1" % label, "%s.bco=%d" % (label, color), '%s.txt=""' % label]
 
 
 def render(box: mmu.Box, selected: int) -> List[str]:
@@ -31,11 +35,7 @@ def render(box: mmu.Box, selected: int) -> List[str]:
         if gate == mmu.BYPASS:
             continue  # Happy Hare reports no state for an external spool here
         slot = slots.get(gate)
-        if slot is None:
-            cmds.append('%s.txt=""' % label)
-            continue
-        cmds.append('%s.txt="%s"' % (label, slotText(slot)))
-        cmds.append("%s.pco=%d" % (label, mmu.rgb565(slot.color) if slot.available else mmu.DEFAULT_COLOR))
+        cmds.extend(slotCommands(label, slot) if slot else ["vis %s,0" % label])
 
     if box.temperature is not None:
         cmds.append('t17.txt="%d"' % round(box.temperature))
