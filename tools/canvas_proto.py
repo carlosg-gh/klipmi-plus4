@@ -17,7 +17,8 @@ import urllib.request
 import serial
 
 END = b"\xff\xff\xff"
-PORT, BAUD = "/dev/ttyS1", 115200
+PORT, BAUDS = "/dev/ttyS1", (921600, 115200)  # the stock HMI boots at 115200; `baud=` raises it until power-off
+FAST = 921600
 CODES = {0x00: "invalid", 0x01: "ok", 0x02: "bad component", 0x03: "bad page", 0x04: "bad picture",
          0x05: "bad font", 0x1A: "bad variable", 0x1B: "bad operation", 0x1C: "assignment failed",
          0x1E: "bad parameter count", 0x1F: "io failed", 0x20: "escape char error", 0x23: "name too long"}
@@ -28,7 +29,7 @@ BG, CARD, HI, TXT, DIM, RED = RGB(24, 26, 30), RGB(52, 56, 62), RGB(0, 170, 220)
 
 class Display:
     def __init__(self, debug: bool = False):
-        self.port = serial.Serial(PORT, BAUD, timeout=0.01)
+        self.port = serial.Serial(PORT, BAUDS[-1], timeout=0.01)
         self.buf = b""
         self.touches = []
         self.debug = debug
@@ -78,10 +79,33 @@ class Display:
             del self.shown[key]
 
 
+def alive(d: Display) -> bool:
+    d.port.reset_input_buffer()
+    d.buf = b""
+    d.write("")
+    d.frames(0.1)
+    d.write("connect")
+    return any(f.startswith(b"comok") for f in d.frames(0.4))
+
+
 def open_canvas() -> Display:
     d = Display()
-    d.send("", 0.2)
-    d.send("connect", 0.4)
+    for baud in BAUDS:  # a previous run may have left the display fast
+        d.port.baudrate = baud
+        if alive(d):
+            break
+    else:
+        raise SystemExit("display does not answer")
+    print("display at %d baud" % d.port.baudrate, flush=True)
+    if d.port.baudrate != FAST:
+        d.write("baud=%d" % FAST)  # temporary; `bauds=` would be saved
+        d.port.flush()
+        time.sleep(0.1)
+        d.port.baudrate = FAST
+        if not alive(d):
+            d.port.baudrate = BAUDS[-1]
+            raise SystemExit("display lost at %d baud; power-cycle the printer or rerun" % FAST)
+        print("raised to %d baud" % FAST, flush=True)
     d.send("bkcmd=2")  # failures only
     d.send("page logo", 0.5)
     d.send("tm0.en=0", 0.1)  # the logo page restarts the UI after 100 s

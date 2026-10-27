@@ -1,5 +1,18 @@
 # Own UI for the Plus 4 screen (design)
 
+## Decision (2026-10-27): draw the UI from the host
+The editor route below needs the Windows-only TJC editor for every change, and nothing else can write `.HMI`/`.tft`. A prototype (`tools/canvas_proto.py`) showed that the stock HMI can be used as a blank canvas instead:
+
+- Page `logo` has no components except a timer; `tm0.en=0` stops its 100 s restart.
+- `sendxy=1` makes the display report any touch as `0x67 <x:2> <y:2> <press|release> ff ff ff`.
+- `fill`, `xstr` (text with solid background, so no clear-then-draw flicker) and `pic` draw everything. Fonts available to the host: ids 0 (largest), 1, 2 only (3+ answer "bad font"). Pictures: whatever the HMI contains.
+- `baud=921600` (temporary, back to 115200 on restart) makes it responsive; use `bkcmd=2` and fire-and-forget writes, since the `nextion` library waits for an answer per command (about 100 ms each).
+- Redraw only what changed: draw text over its own background, cache what each slot shows.
+
+Result on the real screen: live temperatures and a touch-driven nav bar, no visible flicker, responsive at 921600 baud. Consequences: all pages are Python (buttons are rectangles plus hit tests), English strings live in code, and the HMI is only a resource container (fonts, pictures). Still to do: icons (picture ids), page framework (widgets, hit testing, diffed drawing), port of the Box page. The editor route stays as an option for artwork.
+
+Everything below is the earlier editor-based design; the principles (host owns the text, optional hardware stays optional, small command volume) still hold.
+
 Goal: an English-first UI that is ours end to end, built on QIDI's AGPL-3.0 Plus 4 HMI (`xindi_800_480.HMI`, TJC8048X250_011C, 800x480) and driven by klipmi. Contributors can add other QIDI printers later by adding `ui/<printer>/` and an HMI.
 
 ## Principles
