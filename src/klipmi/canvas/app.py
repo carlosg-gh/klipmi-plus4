@@ -211,9 +211,10 @@ class App:
         self.invalidate()
 
     def set_klippy(self, state: str, message: str = ""):
+        changed = state != self.klippy
         self.klippy, self.klippy_message = state, message
         self.was_ready = self.was_ready or state == "ready"
-        self.repaint = True
+        self.repaint = self.repaint or changed  # retries of the same state must not flash the whole screen
         self.invalidate()
 
     def splashing(self) -> bool:

@@ -6,10 +6,13 @@ import socket
 import time
 from typing import List, Optional
 
+from klipmi.canvas import splash
 from klipmi.canvas import widgets as ui
 from klipmi.canvas.app import CONTENT, App, Modal, Page
 from klipmi.canvas.gfx import (CENTER, FONT_MB, FONT_S, FONT_SB, FONT_XS, FONT_XSB, LEFT, RIGHT, Rect, Theme, fill, icon,
                                rounded, soft_disc, text)
+
+from klipmi.version import __version__
 
 from . import wifi
 from .dialogs import choose, confirm, text_entry, wrapped
@@ -276,16 +279,25 @@ class OfflinePage(Page):
         app = self.app
         waiting = {"disconnected": "Waiting for Moonraker", "connecting": "Connecting to Moonraker"}.get(
             app.klippy, "Waiting for Klipper")
-        lit = int(time.time()) % 3  # three dots, one lit, so the screen is seen to be alive
-        dots = []
-        for i in range(3):
-            dots += soft_disc(372 + i * 28, 316, 6, Theme.ACCENT if i == lit else Theme.BORDER, Theme.BG)
-        c.op("splash/title", [text(Rect(150, 170, 500, 50), "QIDI Plus 4", FONT_MB, Theme.TEXT, Theme.BG, CENTER)])
-        c.op("splash/state", [text(Rect(150, 232, 500, 34), waiting, FONT_S, Theme.MUTED, Theme.BG, CENTER)])
-        c.op("splash/dots", dots)
+        c.op("splash/logo", splash.logo_cmds())
+        c.op("splash/title", splash.title_cmds())
+        c.op("splash/status", splash.status_cmds(waiting))
+        c.op("splash/dots", splash.dots_cmds(int(time.monotonic()) % 3))  # one lit dot walks along, so the screen is seen to be alive
+        card = Rect(160, 264, 480, 164)
+        ui.card(c, "splash/card", card)
+        moon = ("Waiting", Theme.WARN) if app.klippy == "disconnected" else ("Connected", Theme.OK)
+        klipper = {"disconnected": ("--", Theme.MUTED), "ready": ("Ready", Theme.OK),
+                   "error": ("Error", Theme.ERR), "shutdown": ("Error", Theme.ERR)}.get(app.klippy, ("Starting", Theme.WARN))
+        waited = int(time.monotonic() - app.started)
+        rows = [("Version", __version__, Theme.TEXT), ("Address", local_ip() or "--", Theme.TEXT),
+                ("Moonraker", moon[0], moon[1]), ("Klipper", klipper[0], klipper[1]),
+                ("Waiting", "%d:%02d" % divmod(waited, 60), Theme.TEXT)]
+        for i, (name, value, ink) in enumerate(rows):
+            y = card.y + 12 + i * 28
+            ui.label(c, "splash/k%d" % i, Rect(card.x + 24, y, 160, 28), name, FONT_XS, Theme.MUTED, Theme.SURFACE, LEFT)
+            ui.label(c, "splash/v%d" % i, Rect(card.x + 184, y, card.w - 208, 28), value, FONT_XS, ink, Theme.SURFACE, RIGHT)
         note = (app.klippy_message or "").strip().splitlines()
-        c.op("splash/note", [text(Rect(100, 350, 600, 28), note[0][:70] if note else "", FONT_XS, Theme.MUTED, Theme.BG,
-                                  CENTER)])
+        c.op("splash/note", [text(Rect(100, 438, 600, 26), note[0][:70] if note else "", FONT_XS, Theme.MUTED, Theme.BG, CENTER)])
 
     def draw(self, c):
         app = self.app
