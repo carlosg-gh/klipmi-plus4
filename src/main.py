@@ -86,7 +86,15 @@ class Klipmi:
             await self.state.display.wakeup()
         await self.ui.start()
         self.ui.onNotReady()
-        await self.state.printer.connect()
+        # Moonraker may still be starting (boot, restart): keep trying instead of giving up
+        while True:
+            try:
+                await self.state.printer.connect()
+                break
+            except Exception as e:
+                logging.warning("Moonraker not reachable yet (%s), retrying", type(e).__name__)
+                self.ui.onMoonrakerError()
+                await asyncio.sleep(3)
 
     def start(self):
         self.state.loop = asyncio.get_event_loop()

@@ -104,7 +104,7 @@ class App:
         self.available: List[str] = []
         self.klippy = "startup"
         self.klippy_message = ""
-        self.started = time.time()
+        self.started = time.monotonic()
         self.was_ready = False
         self.was_splash = False
         self.page: Optional[Page] = None
@@ -115,7 +115,7 @@ class App:
         self.repaint = True
         self.clear_content = False
         self.close_area: Optional[Rect] = None
-        self.last_touch = time.time()
+        self.last_touch = time.monotonic()
         self.sleeping = False
         self.swallow = False
         self.listeners: List[Callable[[dict, dict], None]] = []
@@ -219,14 +219,14 @@ class App:
     def splashing(self) -> bool:
         """True while the printer is still booting: a full-screen splash instead of the rail and the offline card."""
         return (self.klippy in ("startup", "connecting", "disconnected") and not self.was_ready
-                and time.time() - self.started < SPLASH_SECONDS)
+                and time.monotonic() - self.started < SPLASH_SECONDS)
 
     def invalidate(self):
         if self.dirty is not None:
             self.dirty.set()
 
     def touch(self, x: int, y: int, pressed: bool):
-        self.last_touch = time.time()
+        self.last_touch = time.monotonic()
         if self.sleeping:
             self.sleeping = False
             self.swallow = True
@@ -273,7 +273,7 @@ class App:
 
     def _sleep_check(self):
         minutes = self.settings["sleep_minutes"]
-        if minutes and not self.sleeping and not self.printing and time.time() - self.last_touch > minutes * 60:
+        if minutes and not self.sleeping and not self.printing and time.monotonic() - self.last_touch > minutes * 60:
             self.sleeping = True
             self.sink("dim=3")
 
