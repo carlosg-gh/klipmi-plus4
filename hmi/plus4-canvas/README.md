@@ -3,7 +3,7 @@
 Our own minimal TJC project for the Plus 4 screen (TJC8048X250_011, 800x480). One blank page `canvas`, no timers, no touch components: Python draws everything (`src/klipmi/canvas/`). Built with the TJC "USART HMI" editor 1.68.2.
 
 - `plus4-canvas.HMI`: editor project (encoding utf-8, orientation 0)
-- `plus4-canvas.tft`: compiled firmware (919,032 B: pictures 341,209 B, fonts 75,068 B, no errors or warnings; 21 pictures; sha256 `2f16f7d1...3e56`)
+- `plus4-canvas.tft`: compiled firmware (919,156 B: pictures 341,209 B, fonts 75,068 B, no errors or warnings; 21 pictures; sha256 `19127271...5b10`)
 - `fonts/*.zi`: generated fonts (editor font tool, anti-aliasing box ticked)
 - `assets/pics/`: PNGs rendered by `tools/hmi_assets.js` (`node tools/hmi_assets.js`, needs Node and Chrome, no packages). The icons are original 24-unit stroke drawings, kept as SVG paths in that script
 - Fonts are generated from Inter (SIL OFL 1.1, licence in `fonts/OFL.txt`): `Inter-4.0.zip` from github.com/rsms/inter/releases, installed in Windows; only needed to regenerate the fonts
@@ -17,8 +17,11 @@ sendxy=1
 dim=100
 printh 00 00 00 ff ff ff 88 ff ff ff
 page canvas
+cls 2178
+xstr 150,170,500,50,13,61310,2178,1,1,1,"QIDI Plus 4"
+xstr 150,232,500,34,8,36020,2178,1,1,1,"Starting up..."
 ```
-The screen therefore boots at 921600 baud (QIDI's firmware boots at 115200).
+The screen therefore boots at 921600 baud (QIDI's firmware boots at 115200). The last three lines are a power-on splash (Theme.BG, TEXT and MUTED as RGB565) that stays until klipmi draws its first frame.
 
 ## Fonts (ids as in the editor's font list)
 | id | font | size | characters |
