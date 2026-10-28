@@ -23,6 +23,7 @@ TOP = Rect(72, 0, 728, 48)  # status bar
 CONTENT = Rect(72, 50, 720, 422)
 AREA = Rect(72, 48, 728, 432)  # everything a page may repaint
 RAIL_ITEM = 48
+SPLASH_SECONDS = 240  # after this long without the printer ever being ready, show the offline card with its buttons
 STATE_COLOR = {"printing": Theme.ACCENT, "paused": Theme.WARN, "error": Theme.ERR, "complete": Theme.OK,
                "cancelled": Theme.MUTED, "shutdown": Theme.ERR, "startup": Theme.WARN, "disconnected": Theme.ERR}
 
@@ -103,6 +104,9 @@ class App:
         self.available: List[str] = []
         self.klippy = "startup"
         self.klippy_message = ""
+        self.started = time.time()
+        self.was_ready = False
+        self.was_splash = False
         self.page: Optional[Page] = None
         self.modal: Optional[Modal] = None
         self.offline_page: Optional[Page] = None
@@ -208,8 +212,14 @@ class App:
 
     def set_klippy(self, state: str, message: str = ""):
         self.klippy, self.klippy_message = state, message
+        self.was_ready = self.was_ready or state == "ready"
         self.repaint = True
         self.invalidate()
+
+    def splashing(self) -> bool:
+        """True while the printer is still booting: a full-screen splash instead of the rail and the offline card."""
+        return (self.klippy in ("startup", "connecting", "disconnected") and not self.was_ready
+                and time.time() - self.started < SPLASH_SECONDS)
 
     def invalidate(self):
         if self.dirty is not None:
@@ -269,6 +279,11 @@ class App:
 
     def render(self):
         c = self.canvas
+        splash = (self.klippy != "ready" and self.offline_page is not None
+                  and not getattr(self.page, "allow_offline", False) and self.splashing())
+        if splash != self.was_splash:  # the rail and status bar appear or disappear: repaint everything
+            self.was_splash = splash
+            self.repaint = True
         if self.repaint:
             c.reset(Theme.BG)
             self.repaint = self.clear_content = False
@@ -286,7 +301,7 @@ class App:
         page = self.page
         if self.klippy != "ready" and self.offline_page is not None and not getattr(page, "allow_offline", False):
             page = self.offline_page
-        if page is not None:
+        if page is not None and not splash:
             self._draw_top(c, self.modal or page)
             self._draw_nav(c, self.modal if self.modal is not None and self.modal.nav else page)
         if self.modal is not None:

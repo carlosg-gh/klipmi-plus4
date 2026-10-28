@@ -3,12 +3,13 @@
 
 import logging
 import socket
+import time
 from typing import List, Optional
 
 from klipmi.canvas import widgets as ui
 from klipmi.canvas.app import CONTENT, App, Modal, Page
 from klipmi.canvas.gfx import (CENTER, FONT_MB, FONT_S, FONT_SB, FONT_XS, FONT_XSB, LEFT, RIGHT, Rect, Theme, fill, icon,
-                               rounded, text)
+                               rounded, soft_disc, text)
 
 from . import wifi
 from .dialogs import choose, confirm, text_entry, wrapped
@@ -271,8 +272,25 @@ class WifiSheet(Modal):
 class OfflinePage(Page):
     bar_temps = False
 
+    def draw_splash(self, c):
+        app = self.app
+        waiting = {"disconnected": "Waiting for Moonraker", "connecting": "Connecting to Moonraker"}.get(
+            app.klippy, "Waiting for Klipper")
+        lit = int(time.time()) % 3  # three dots, one lit, so the screen is seen to be alive
+        dots = []
+        for i in range(3):
+            dots += soft_disc(372 + i * 28, 316, 6, Theme.ACCENT if i == lit else Theme.BORDER, Theme.BG)
+        c.op("splash/title", [text(Rect(150, 170, 500, 50), "QIDI Plus 4", FONT_MB, Theme.TEXT, Theme.BG, CENTER)])
+        c.op("splash/state", [text(Rect(150, 232, 500, 34), waiting, FONT_S, Theme.MUTED, Theme.BG, CENTER)])
+        c.op("splash/dots", dots)
+        note = (app.klippy_message or "").strip().splitlines()
+        c.op("splash/note", [text(Rect(100, 350, 600, 28), note[0][:70] if note else "", FONT_XS, Theme.MUTED, Theme.BG,
+                                  CENTER)])
+
     def draw(self, c):
         app = self.app
+        if app.splashing():
+            return self.draw_splash(c)
         r = CONTENT
         ui.card(c, "off/card", r)
         starting = app.klippy in ("startup", "connecting")

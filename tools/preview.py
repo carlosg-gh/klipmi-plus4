@@ -374,6 +374,8 @@ async def main(out, status_path):
     app.klippy_message = "MCU 'mmu' shutdown: Timer too close. Once the underlying issue is corrected, use the FIRMWARE_RESTART command."
     app.go_nav("home")
     await shot("21-offline")
+    app.klippy, app.klippy_message = "startup", "Printer is not ready"
+    await shot("22-splash")
     print("gcode sent:", printer.sent)
 
 
